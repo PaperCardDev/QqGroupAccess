@@ -110,6 +110,54 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi 
             }
         });
 
+
+        GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
+
+            if (event.getGroupId() == getAuditGroupId()) {
+                final String msg = """
+                        \n欢迎来到PaperCard服务器审核群~
+                        -
+                        你只需要完成以下两件事情就可以游玩本服务器：
+                        1. 查看【游玩手册】并填写简单的【白名单审核问卷】
+                        2. 给我们的【宣传视频】三连支持，并发送【三连截图】到本群中，然后@管理审核
+                        -
+                        游玩手册：https://docs.qq.com/doc/DV0VmWXVSVVBadWVW
+                        -
+                        白名单审核问卷：https://docs.qq.com/form/page/DV2x3TnVqYnVpZHBW
+                        -
+                        当前B站宣传视频：https://www.bilibili.com/video/BV13s4y1F7xh
+                        -
+                        目前服务器MC版本为：%s。
+                        -
+                        在填写审核问卷后，在得到审核结果之前，请勿退出审核群，否则问卷【作废处理】
+                        -
+                        请在入群后【三天内】提交审核问卷和三连截图，三天后你将会被自动踢出此群。
+                        -
+                        有其它疑问可以查看游玩手册、群公告或咨询管理员~""".formatted(this.getServer().getMinecraftVersion());
+
+                final Group group = event.getGroup();
+                group.sendMessage(new MessageChainBuilder()
+                        .append(new At(event.getMember().getId()))
+                        .append(msg)
+                        .build());
+                return;
+            }
+
+            if (event.getGroupId() == getMainGroupId()) {
+                final String msg = """
+                        \n欢迎新伙伴入裙~
+                        请查看群公告【新人必看】
+                        祝您游戏愉快~
+                        """;
+                final Group group = event.getGroup();
+                group.sendMessage(new MessageChainBuilder()
+                        .append(new At(event.getMember().getId()))
+                        .append(msg)
+                        .build());
+            }
+
+        });
+
     }
 
     @Override
@@ -119,6 +167,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi 
     @Override
     public long getMainGroupId() {
         return 860768366L;
+    }
+
+    @Override
+    public long getAuditGroupId() {
+        return 747760104L;
     }
 
     @Override
