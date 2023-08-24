@@ -3,6 +3,11 @@ package cn.paper_card.qq_group_access;
 import cn.paper_card.player_qq_bind.QqBindApi;
 import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
 import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
+import com.github.Anon8281.universalScheduler.UniversalScheduler;
+import com.github.Anon8281.universalScheduler.scheduling.schedulers.TaskScheduler;
+import io.papermc.paper.event.player.AsyncChatEvent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
 import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.Group;
 import net.mamoe.mirai.contact.Member;
@@ -16,6 +21,8 @@ import net.mamoe.mirai.message.data.At;
 import net.mamoe.mirai.message.data.MessageChainBuilder;
 import net.mamoe.mirai.message.data.PlainText;
 import net.mamoe.mirai.message.data.QuoteReply;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
@@ -23,7 +30,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 
 @SuppressWarnings("unused")
-public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi {
+public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi, Listener {
 
     private QqBindApi qqBindApi = null;
     private PlayerQqGroupRemarkApi playerQqGroupRemarkApi = null;
@@ -31,6 +38,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi 
     private PlayerQqInGroupApi playerQqInGroupApi = null;
 
     private final @NotNull Object lock = new Object();
+    private final @NotNull TaskScheduler taskScheduler;
+
+    public QqGroupAccess() {
+        this.taskScheduler = UniversalScheduler.getScheduler(this);
+    }
 
 
     private void getQqBindApi() {
@@ -63,8 +75,43 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi 
         }
     }
 
+    private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull String message) {
+
+        if (message.length() > 32) return;
+
+        // 转发到游戏内
+        if (this.qqBindApi != null) {
+            final QqBindApi.BindInfo bindInfo;
+            try {
+                bindInfo = this.qqBindApi.queryByQq(member.getId());
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            }
+
+            if (bindInfo == null || bindInfo.uuid() == null) return;
+
+            final String name = getServer().getOfflinePlayer(bindInfo.uuid()).getName();
+
+            if (name == null) return;
+
+            this.taskScheduler.runTask(() -> getServer().broadcast(Component.text()
+                    .append(Component.text("<"))
+                    .append(Component.text(name))
+                    .append(Component.text("> "))
+                    .append(Component.text(message))
+                    .build()
+            ));
+
+        }
+
+
+    }
+
     @Override
     public void onEnable() {
+
+        this.getServer().getPluginManager().registerEvents(this, this);
 
         this.getQqBindApi();
         this.getPlayerQqGroupRemarkApi();
@@ -77,9 +124,12 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi 
             final Member sender = event.getSender();
             final String messageStr = event.getMessage().contentToString();
 
+
             if (this.playerQqGroupRemarkApi != null) {
                 this.playerQqGroupRemarkApi.updateRemarkByGroupMessage(sender.getId(), sender.getNameCard());
             }
+
+            this.transportGroupMessage(group, sender, messageStr);
 
             if (this.qqBindApi != null) {
                 final List<String> reply = this.qqBindApi.onMainGroupMessage(sender.getId(), messageStr);
@@ -158,6 +208,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi 
 
         });
 
+
     }
 
     @Override
@@ -223,6 +274,22 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi 
             }
 
             throw new Exception("没有任何一个机器人可以访问QQ群：%d".formatted(mainGroupId));
+        }
+    }
+
+    @EventHandler
+    public void onChat(@NotNull AsyncChatEvent event) {
+        final Component message = event.message();
+        if (message instanceof final TextComponent textComponent) {
+            final GroupAccess mainGroupAccess;
+            try {
+                mainGroupAccess = getMainGroupAccess();
+            } catch (Exception e) {
+                getLogger().warning(e.toString());
+                return;
+            }
+
+            mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), textComponent.content()));
         }
     }
 }
