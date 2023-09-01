@@ -21,4 +21,7 @@ public interface QqGroupAccessApi {
 
     @SuppressWarnings("unused")
     @NotNull GroupAccess getMainGroupAccess() throws Exception;
+
+    @SuppressWarnings("unused")
+    @NotNull GroupAccess getAuditGroupAccess() throws Exception;
 }

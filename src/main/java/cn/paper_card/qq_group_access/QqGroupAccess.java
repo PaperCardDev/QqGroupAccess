@@ -14,6 +14,7 @@ import net.mamoe.mirai.contact.Member;
 import net.mamoe.mirai.contact.NormalMember;
 import net.mamoe.mirai.contact.PermissionDeniedException;
 import net.mamoe.mirai.event.GlobalEventChannel;
+import net.mamoe.mirai.event.events.BotOnlineEvent;
 import net.mamoe.mirai.event.events.GroupMessageEvent;
 import net.mamoe.mirai.event.events.MemberJoinEvent;
 import net.mamoe.mirai.event.events.MemberLeaveEvent;
@@ -21,8 +22,10 @@ import net.mamoe.mirai.message.data.At;
 import net.mamoe.mirai.message.data.MessageChainBuilder;
 import net.mamoe.mirai.message.data.PlainText;
 import net.mamoe.mirai.message.data.QuoteReply;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
@@ -39,6 +42,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private final @NotNull Object lock = new Object();
     private final @NotNull TaskScheduler taskScheduler;
+
+    private final static String PATH_BOT_ID = "bot-id";
+    private final static String PATH_MAIN_GROUP_ID = "main-group-id";
+
+    private final static String PATH_AUDIT_GROUP_ID = "audit-group-id";
 
     public QqGroupAccess() {
         this.taskScheduler = UniversalScheduler.getScheduler(this);
@@ -74,6 +82,33 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         }
     }
+
+    void setBotId(long id) {
+        this.getConfig().set(PATH_BOT_ID, id);
+    }
+
+    long getBotId() {
+        return this.getConfig().getLong(PATH_BOT_ID, 0);
+    }
+
+    void setMainGroupId(long id) {
+        this.getConfig().set(PATH_MAIN_GROUP_ID, id);
+    }
+
+    @Override
+    public long getMainGroupId() {
+        return this.getConfig().getLong(PATH_MAIN_GROUP_ID, 0);
+    }
+
+    void setAuditGroupId(long id) {
+        this.getConfig().set(PATH_AUDIT_GROUP_ID, id);
+    }
+
+    @Override
+    public long getAuditGroupId() {
+        return this.getConfig().getLong(PATH_AUDIT_GROUP_ID, 0);
+    }
+
 
     private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull String message) {
 
@@ -113,11 +148,24 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         this.getServer().getPluginManager().registerEvents(this, this);
 
+        final PluginCommand command = this.getCommand("qq-group-access");
+        final MainCommand mainCommand = new MainCommand(this);
+        assert command != null;
+        command.setTabCompleter(mainCommand);
+        command.setExecutor(mainCommand);
+
+        this.setMainGroupId(this.getMainGroupId());
+        this.setAuditGroupId(this.getAuditGroupId());
+        this.setBotId(this.getBotId());
+        this.saveConfig();
+
         this.getQqBindApi();
         this.getPlayerQqGroupRemarkApi();
         this.getPlayerQqInGroupApi();
 
         GlobalEventChannel.INSTANCE.subscribeAlways(GroupMessageEvent.class, event -> {
+            if (event.getBot().getId() != this.getBotId()) return;
+
             final Group group = event.getGroup();
             if (group.getId() != this.getMainGroupId()) return;
 
@@ -147,6 +195,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         });
 
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
+            if (event.getBot().getId() != this.getBotId()) return;
+
             if (event.getGroupId() != this.getMainGroupId()) return;
             if (this.playerQqInGroupApi != null) {
                 this.playerQqInGroupApi.onMemberJoinGroup(event.getMember().getId());
@@ -154,6 +204,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         });
 
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.class, event -> {
+            if (event.getBot().getId() != this.getBotId()) return;
+
             if (event.getGroupId() != this.getMainGroupId()) return;
             if (this.playerQqInGroupApi != null) {
                 this.playerQqInGroupApi.onMemberQuitGroup(event.getMember().getId());
@@ -162,6 +214,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
 
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
+            if (event.getBot().getId() != this.getBotId()) return;
 
             if (event.getGroupId() == getAuditGroupId()) {
                 final String msg = """
@@ -208,72 +261,155 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         });
 
+        GlobalEventChannel.INSTANCE.subscribeAlways(BotOnlineEvent.class, event -> {
+            if (event.getBot().getId() != this.getBotId()) return;
+
+            final int currentTick = this.getServer().getCurrentTick();
+            if (currentTick < 20 * 60 * 5) {
+                final GroupAccess mainGroupAccess;
+                try {
+                    mainGroupAccess = getMainGroupAccess();
+                } catch (Exception e) {
+                    this.getLogger().warning(e.toString());
+                    return;
+                }
+
+                mainGroupAccess.sendNormalMessage("服务器已经启动啦~");
+            }
+        });
 
     }
 
     @Override
     public void onDisable() {
+        this.saveConfig();
     }
 
-    @Override
-    public long getMainGroupId() {
-        return 860768366L;
-    }
-
-    @Override
-    public long getAuditGroupId() {
-        return 747760104L;
-    }
 
     @Override
     public @NotNull GroupAccess getMainGroupAccess() throws Exception {
         final long mainGroupId = this.getMainGroupId();
+        final long botId = this.getBotId();
+
+        if (botId == 0) throw new Exception("没有配置用于访问QQ群的QQ机器人账号！");
+        if (mainGroupId == 0) throw new Exception("没有配置主群的QQ群号！");
+
         synchronized (this.lock) {
-            final List<Bot> instances = Bot.getInstances();
-            if (instances.size() == 0) throw new Exception("没有任何一个QQ机器人！");
 
-            for (final Bot instance : Bot.getInstances()) {
-                if (instance == null) continue;
-                if (!instance.isOnline()) continue;
-                final Group group = instance.getGroup(mainGroupId);
-                if (group == null) continue;
 
-                return new GroupAccess() {
-                    @Override
-                    public boolean hasMember(long qq) {
-                        final NormalMember normalMember = group.get(qq);
-                        return normalMember != null;
-                    }
+            final Bot bot = Bot.findInstance(botId);
 
-                    @Override
-                    public void setGroupMemberRemark(long qq, @NotNull String remark) throws Exception {
-                        final NormalMember normalMember = group.get(qq);
-                        if (normalMember == null) throw new Exception("群里没有该成员：%d".formatted(qq));
-
-                        try {
-                            normalMember.setNameCard(remark);
-                        } catch (PermissionDeniedException e) {
-                            throw new Exception(e);
-                        }
-                    }
-
-                    @Override
-                    public void sendNormalMessage(@NotNull String message) {
-                        group.sendMessage(message);
-                    }
-
-                    @Override
-                    public void sendAtMessage(long qq, @NotNull String message) {
-                        group.sendMessage(new MessageChainBuilder()
-                                .append(new At(qq))
-                                .append(new PlainText(" "))
-                                .append(new PlainText(message))
-                                .build());
-                    }
-                };
+            if (bot == null) {
+                throw new Exception("QQ机器人[%d]未登录！".formatted(botId));
             }
 
-            throw new Exception("没有任何一个机器人可以访问QQ群：%d".formatted(mainGroupId));
+            if (!bot.isOnline()) {
+                throw new Exception("QQ机器人[%d]离线！".formatted(botId));
+            }
+
+
+            final Group group = bot.getGroup(mainGroupId);
+
+            if (group == null) {
+                throw new Exception("QQ机器人[%d]无法访问QQ主群[%d]，请手动邀请QQ机器人入群！".formatted(botId, mainGroupId));
+            }
+
+            return new GroupAccess() {
+                @Override
+                public boolean hasMember(long qq) {
+                    final NormalMember normalMember = group.get(qq);
+                    return normalMember != null;
+                }
+
+                @Override
+                public void setGroupMemberRemark(long qq, @NotNull String remark) throws Exception {
+                    final NormalMember normalMember = group.get(qq);
+                    if (normalMember == null) throw new Exception("群里没有该成员：%d".formatted(qq));
+
+                    try {
+                        normalMember.setNameCard(remark);
+                    } catch (PermissionDeniedException e) {
+                        throw new Exception(e);
+                    }
+                }
+
+                @Override
+                public void sendNormalMessage(@NotNull String message) {
+                    group.sendMessage(message);
+                }
+
+                @Override
+                public void sendAtMessage(long qq, @NotNull String message) {
+                    group.sendMessage(new MessageChainBuilder()
+                            .append(new At(qq))
+                            .append(new PlainText(" "))
+                            .append(new PlainText(message))
+                            .build());
+                }
+            };
+        }
+    }
+
+    @Override
+    public @NotNull GroupAccess getAuditGroupAccess() throws Exception {
+        final long auditGroupId = this.getAuditGroupId();
+        final long botId = this.getBotId();
+
+        if (botId == 0) throw new Exception("没有配置用于访问QQ群的QQ机器人账号！");
+        if (auditGroupId == 0) throw new Exception("没有配置审核群的QQ群号！");
+
+        synchronized (this.lock) {
+
+            final Bot bot = Bot.findInstance(botId);
+
+            if (bot == null) {
+                throw new Exception("QQ机器人[%d]未登录！".formatted(botId));
+            }
+
+            if (!bot.isOnline()) {
+                throw new Exception("QQ机器人[%d]离线！".formatted(botId));
+            }
+
+
+            final Group group = bot.getGroup(auditGroupId);
+
+            if (group == null) {
+                throw new Exception("QQ机器人[%d]无法访问QQ群[%d]，请手动邀请QQ机器人入群！".formatted(botId, auditGroupId));
+            }
+
+            return new GroupAccess() {
+                @Override
+                public boolean hasMember(long qq) {
+                    final NormalMember normalMember = group.get(qq);
+                    return normalMember != null;
+                }
+
+                @Override
+                public void setGroupMemberRemark(long qq, @NotNull String remark) throws Exception {
+                    final NormalMember normalMember = group.get(qq);
+                    if (normalMember == null) throw new Exception("群里没有该成员：%d".formatted(qq));
+
+                    try {
+                        normalMember.setNameCard(remark);
+                    } catch (PermissionDeniedException e) {
+                        throw new Exception(e);
+                    }
+                }
+
+                @Override
+                public void sendNormalMessage(@NotNull String message) {
+                    group.sendMessage(message);
+                }
+
+                @Override
+                public void sendAtMessage(long qq, @NotNull String message) {
+                    group.sendMessage(new MessageChainBuilder()
+                            .append(new At(qq))
+                            .append(new PlainText(" "))
+                            .append(new PlainText(message))
+                            .build());
+                }
+            };
         }
     }
 
@@ -291,5 +427,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), textComponent.content()));
         }
+    }
+
+    @NotNull Permission addPermission(@NotNull String name) {
+        final Permission permission = new Permission(name);
+        this.getServer().getPluginManager().addPermission(permission);
+        return permission;
     }
 }

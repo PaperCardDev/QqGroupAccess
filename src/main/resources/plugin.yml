@@ -10,3 +10,13 @@ depend:
   - PlayerQqBind
   - PlayerQqGroupRemark
   - PlayerQqInGroup
+
+commands:
+  qq-group-access:
+    permission: qq-group-access.command
+
+permissions:
+  qq-group-access.command:
+    default: true
+
+
