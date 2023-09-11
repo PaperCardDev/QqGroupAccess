@@ -9,6 +9,7 @@ import com.github.Anon8281.universalScheduler.scheduling.tasks.MyScheduledTask;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.*;
 import net.mamoe.mirai.event.GlobalEventChannel;
@@ -117,9 +118,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     }
 
 
-    private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull String message) {
-
-        if (message.length() > 32) return;
+    private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull MessageChain messageChain) {
 
         // 转发到游戏内
         if (this.qqBindApi != null) {
@@ -137,17 +136,25 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             if (name == null) return;
 
+            final StringBuilder builder = new StringBuilder();
+            for (final SingleMessage singleMessage : messageChain) {
+                if (singleMessage instanceof final At at) {
+                    final String display = at.getDisplay(group);
+                    builder.append(display);
+                } else {
+                    builder.append(singleMessage.contentToString());
+                }
+            }
+
             this.taskScheduler.runTask(() -> getServer().broadcast(Component.text()
-                    .append(Component.text("<"))
+                    .append(Component.text("<").color(NamedTextColor.GOLD))
                     .append(Component.text(name))
-                    .append(Component.text("> "))
-                    .append(Component.text(message))
-                    .build()
-            ));
+                    .append(Component.text("> ").color(NamedTextColor.GOLD))
+                    .append(Component.text(builder.toString()))
+                    .build()));
+
 
         }
-
-
     }
 
     private void onMainGroupMessage(@NotNull GroupMessageEvent event) {
@@ -190,18 +197,19 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             this.playerQqGroupRemarkApi.updateRemarkByGroupMessage(sender.getId(), sender.getNameCard());
         }
 
-        this.transportGroupMessage(group, sender, messageStr);
+        this.transportGroupMessage(group, sender, message);
 
         if (this.qqBindApi != null) {
             final List<String> reply = this.qqBindApi.onMainGroupMessage(sender.getId(), messageStr);
             if (reply != null) {
                 for (final String s : reply) {
-                    group.sendMessage(new MessageChainBuilder()
+                    final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
                             .append(new QuoteReply(event.getMessage()))
                             .append(new At(sender.getId()))
                             .append(new PlainText(" "))
                             .append(new PlainText(s))
                             .build());
+                    if (!messageSends.offer(runnable)) runnable.run();
                 }
             }
         }
@@ -224,10 +232,12 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             if (removed) {
 
-                group.sendMessage(new MessageChainBuilder()
+                final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
                         .append(new At(event.getSender().getId()))
                         .append(" 已将入群方式通过私信发送给你啦~\n如果没有收到，可以联系管理员~")
                         .build());
+
+                if (!messageSends.offer(runnable)) runnable.run();
 
                 synchronized (this.passAuditQq) {
                     this.passAuditQq.add(event.getSender().getId());
@@ -235,18 +245,24 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
                 final Member sender = event.getSender();
 
-                sender.sendMessage("""
+                final Runnable runnable1 = () -> sender.sendMessage("""
                         你好呀！我是PaperCard机器人喵喵~
                         恭喜你已经通过了审核~
                         我们的QQ主群为：%d
                         期待你的加入~""".formatted(this.getMainGroupId()));
 
+                if (!messageSends.offer(runnable1)) runnable1.run();
+
             } else {
-                group.sendMessage(new MessageChainBuilder()
-                        .append(new QuoteReply(message))
-                        .append(new At(event.getSender().getId()))
-                        .append(" 先发送三连截图到群里，再@我噢~")
-                        .build());
+
+                final Runnable runnable = () ->
+                        group.sendMessage(new MessageChainBuilder()
+                                .append(new QuoteReply(message))
+                                .append(new At(event.getSender().getId()))
+                                .append(" 先发送三连截图到群里，再@我噢~")
+                                .build());
+
+                if (!messageSends.offer(runnable)) runnable.run();
             }
 
             return;
