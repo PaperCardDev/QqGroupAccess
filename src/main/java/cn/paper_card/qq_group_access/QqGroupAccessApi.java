@@ -20,8 +20,8 @@ public interface QqGroupAccessApi {
     long getAuditGroupId();
 
     @SuppressWarnings("unused")
-    @NotNull GroupAccess getMainGroupAccess() throws Exception;
+    @NotNull GroupAccess createMainGroupAccess() throws Exception;
 
     @SuppressWarnings("unused")
-    @NotNull GroupAccess getAuditGroupAccess() throws Exception;
+    @NotNull GroupAccess createAuditGroupAccess() throws Exception;
 }
