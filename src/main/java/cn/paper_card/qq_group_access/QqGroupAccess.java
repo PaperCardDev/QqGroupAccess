@@ -191,8 +191,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                     builder.append(face.contentToString());
                 } else if (singleMessage instanceof final VipFace vipFace) { // VIP表情
                     builder.append(vipFace.contentToString());
-                } else {
-                    builder.append("[不受支持的消息类型]");
                 }
             }
 
