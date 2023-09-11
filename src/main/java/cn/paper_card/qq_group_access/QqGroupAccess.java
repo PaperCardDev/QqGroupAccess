@@ -183,7 +183,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         // 太久不上线了
         final long current = System.currentTimeMillis();
-        if (current - offlinePlayer.getFirstPlayed() > 7 * 24 * 60 * 60 * 1000L) return;
+        if (current - offlinePlayer.getLastSeen() > 7 * 24 * 60 * 60 * 1000L) return;
 
         final StringBuilder builder = new StringBuilder();
 
