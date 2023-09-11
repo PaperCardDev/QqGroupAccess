@@ -17,6 +17,7 @@ import net.mamoe.mirai.contact.*;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
 import net.mamoe.mirai.message.data.*;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -352,6 +353,32 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         });
     }
 
+    private @NotNull String getLeaveMemberName(long qq) {
+        if (qqBindApi == null) return "无法访问QQ绑定API！";
+
+
+        final QqBindApi.BindInfo bindInfo;
+        try {
+            bindInfo = qqBindApi.queryByQq(qq);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return e.toString();
+        }
+
+        if (bindInfo == null || bindInfo.uuid() == null) {
+            return "未绑定";
+        }
+
+
+        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
+
+        final String name1 = offlinePlayer.getName();
+
+        if (name1 != null) return name1;
+
+        return offlinePlayer.getUniqueId().toString();
+    }
+
     private void onMemberLeave() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
@@ -365,7 +392,16 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             final Group group = event.getGroup();
             final Member member = event.getMember();
 
-            group.sendMessage("%s (%d) 离开了群聊，无白名单".formatted(member.getNick(), member.getId()));
+            final Runnable runnable = () -> {
+                final long id = member.getId();
+                final String name = getLeaveMemberName(id);
+
+
+                group.sendMessage("%s (%d) 离开了群聊，无白名单\n游戏名：%s".formatted(member.getNick(), member.getId(), name));
+            };
+
+            if (!messageSends.offer(runnable)) runnable.run();
+
         });
     }
 
