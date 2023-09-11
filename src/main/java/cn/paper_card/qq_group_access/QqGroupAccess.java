@@ -25,6 +25,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -50,6 +51,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     private final @NotNull HashSet<Long> passAuditQq = new HashSet<>();
 
     private final @NotNull BlockingQueue<Runnable> messageSends;
+
+    private MyScheduledTask myScheduledTask = null;
 
     public QqGroupAccess() {
         this.gpt = new Gpt();
@@ -265,25 +268,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         }
     }
 
-    @Override
-    public void onEnable() {
-
-        this.getServer().getPluginManager().registerEvents(this, this);
-
-        final PluginCommand command = this.getCommand("qq-group-access");
-        final MainCommand mainCommand = new MainCommand(this);
-        assert command != null;
-        command.setTabCompleter(mainCommand);
-        command.setExecutor(mainCommand);
-
-        this.setMainGroupId(this.getMainGroupId());
-        this.setAuditGroupId(this.getAuditGroupId());
-        this.setBotId(this.getBotId());
-        this.saveConfig();
-
-        this.getQqBindApi();
-        this.getPlayerQqGroupRemarkApi();
-        this.getPlayerQqInGroupApi();
+    private void onFriendMessage() {
 
         GlobalEventChannel.INSTANCE.subscribeAlways(FriendMessageEvent.class, event -> {
             final Friend sender = event.getSender();
@@ -302,7 +287,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 sender.sendMessage(resp);
             });
         });
+    }
 
+    private void onGroupMessage() {
         GlobalEventChannel.INSTANCE.subscribeAlways(GroupMessageEvent.class, event -> {
             final long botId = this.getBotId();
             if (event.getBot().getId() != botId) return;
@@ -311,7 +298,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (event.getGroup().getId() == this.getAuditGroupId()) this.onAuditGroupMessage(event);
 
         });
+    }
 
+    private void onMemberLeave() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
 
@@ -326,8 +315,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             group.sendMessage("%s (%d) 离开了群聊，无白名单".formatted(member.getNick(), member.getId()));
         });
+    }
 
-
+    private void onMemberJoin() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
 
@@ -405,6 +395,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 auditGroupAccess.sendAtMessage(event.getMember().getId(), "恭喜你已经进入主群，现在可以退出审核群啦~");
             }
         });
+    }
+
+    private void onBotLogin() {
 
         GlobalEventChannel.INSTANCE.subscribeAlways(BotOnlineEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
@@ -420,7 +413,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             mainGroupAccess.sendNormalMessage("QQ机器人登录成功，服务器已经启动啦~");
 
         });
+    }
 
+    private void onJoinRequest() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinRequestEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
             if (event.getGroupId() != this.getMainGroupId()) return;
@@ -507,18 +502,82 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             if (!messageSends.offer(runnable)) runnable.run();
         });
+    }
 
-        final MyScheduledTask myScheduledTask = this.taskScheduler.runTaskTimerAsynchronously(() -> {
-            final Runnable runnable = messageSends.poll();
-            if (runnable == null) return;
-            runnable.run();
-        }, 20, 20);
+    @Override
+    public void onEnable() {
+
+        this.getServer().getPluginManager().registerEvents(this, this);
+
+        // 注册命令
+        final PluginCommand command = this.getCommand("qq-group-access");
+        final MainCommand mainCommand = new MainCommand(this);
+        assert command != null;
+        command.setTabCompleter(mainCommand);
+        command.setExecutor(mainCommand);
+
+        // 保存配置文件
+        this.setMainGroupId(this.getMainGroupId());
+        this.setAuditGroupId(this.getAuditGroupId());
+        this.setBotId(this.getBotId());
+        this.saveConfig();
+
+        // 获取其它插件接口
+        this.getQqBindApi();
+        this.getPlayerQqGroupRemarkApi();
+        this.getPlayerQqInGroupApi();
+
+        // 好友消息的处理
+        this.onFriendMessage();
+
+        // 群消息的处理
+        this.onGroupMessage();
+
+        // 退群事件的处理
+        this.onMemberLeave();
+
+        // 入群请求事件的处理
+        this.onJoinRequest();
+
+        // 入群事件的处理
+        this.onMemberJoin();
+
+        // 机器人登录事件的处理
+        this.onBotLogin();
+
+
+        final Random random = new Random();
+
+        if (this.myScheduledTask == null) {
+            this.myScheduledTask = this.taskScheduler.runTaskTimerAsynchronously(() -> {
+                final Runnable runnable = messageSends.poll();
+                if (runnable == null) return;
+
+                final long l = random.nextLong(200);
+
+                try {
+                    Thread.sleep(l);
+                } catch (InterruptedException e) {
+                    getLogger().warning(e.toString());
+                    return;
+                }
+
+                runnable.run();
+            }, 20, 20);
+
+        }
 
     }
 
     @Override
     public void onDisable() {
         this.saveConfig();
+
+        if (this.myScheduledTask != null) {
+            this.myScheduledTask.cancel();
+            this.myScheduledTask = null;
+        }
+        this.taskScheduler.cancelTasks();
     }
 
 
