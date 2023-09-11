@@ -205,11 +205,15 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             }
         }
 
+        final String string = builder.toString();
+
+        if (string.isEmpty()) return;
+
         this.taskScheduler.runTask(() -> getServer().broadcast(Component.text()
                 .append(Component.text("<").color(NamedTextColor.GOLD))
                 .append(Component.text(name))
                 .append(Component.text("> ").color(NamedTextColor.GOLD))
-                .append(Component.text(builder.toString()))
+                .append(Component.text(string))
                 .build()));
 
     }
