@@ -52,6 +52,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private final static String PATH_AUDIT_GROUP_ID = "audit-group-id";
 
+    private final static String MESSAGE_PREFIX_SEND_TO_GROUP = "#";
+
     private final @NotNull HashSet<Long> auditSendImageQq = new HashSet<>();
     private final @NotNull HashSet<Long> passAuditQq = new HashSet<>();
 
@@ -173,13 +175,24 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (name == null) return;
 
             final StringBuilder builder = new StringBuilder();
+
             for (final SingleMessage singleMessage : messageChain) {
-                if (singleMessage instanceof final At at) {
+                if (singleMessage instanceof final At at) { // AT某人
                     final String display = at.getDisplay(group);
                     builder.append(display);
                     this.onMainGroupAtMessage(at, member, name);
+                } else if (singleMessage instanceof final AtAll atAll) { // AT全体
+                    builder.append(atAll.contentToString());
+                } else if (singleMessage instanceof final PlainText plainText) { // 纯文本
+                    builder.append(plainText.getContent());
+                } else if (singleMessage instanceof final Image image) { // 图片
+                    builder.append(image.contentToString());
+                } else if (singleMessage instanceof final Face face) { // 表情
+                    builder.append(face.contentToString());
+                } else if (singleMessage instanceof final VipFace vipFace) { // VIP表情
+                    builder.append(vipFace.contentToString());
                 } else {
-                    builder.append(singleMessage.contentToString());
+                    builder.append("[不受支持的消息类型]");
                 }
             }
 
@@ -740,7 +753,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         final String content = textComponent.content();
 
-        if (!content.startsWith("#")) return;
+        if (!content.startsWith(MESSAGE_PREFIX_SEND_TO_GROUP)) return;
 
         if (this.getBotId() == 0) return;
         if (this.getMainGroupId() == 0) return;
