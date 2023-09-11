@@ -158,51 +158,60 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull MessageChain messageChain) {
 
+        if (this.qqBindApi == null) return;
+
         // 转发到游戏内
-        if (this.qqBindApi != null) {
-            final QqBindApi.BindInfo bindInfo;
-            try {
-                bindInfo = this.qqBindApi.queryByQq(member.getId());
-            } catch (Exception e) {
-                e.printStackTrace();
-                return;
-            }
 
-            if (bindInfo == null || bindInfo.uuid() == null) return;
-
-            final String name = getServer().getOfflinePlayer(bindInfo.uuid()).getName();
-
-            if (name == null) return;
-
-            final StringBuilder builder = new StringBuilder();
-
-            for (final SingleMessage singleMessage : messageChain) {
-                if (singleMessage instanceof final At at) { // AT某人
-                    final String display = at.getDisplay(group);
-                    builder.append(display);
-                    this.onMainGroupAtMessage(at, member, name);
-                } else if (singleMessage instanceof final AtAll atAll) { // AT全体
-                    builder.append(atAll.contentToString());
-                } else if (singleMessage instanceof final PlainText plainText) { // 纯文本
-                    builder.append(plainText.getContent());
-                } else if (singleMessage instanceof final Image image) { // 图片
-                    builder.append(image.contentToString());
-                } else if (singleMessage instanceof final Face face) { // 表情
-                    builder.append(face.contentToString());
-                } else if (singleMessage instanceof final VipFace vipFace) { // VIP表情
-                    builder.append(vipFace.contentToString());
-                }
-            }
-
-            this.taskScheduler.runTask(() -> getServer().broadcast(Component.text()
-                    .append(Component.text("<").color(NamedTextColor.GOLD))
-                    .append(Component.text(name))
-                    .append(Component.text("> ").color(NamedTextColor.GOLD))
-                    .append(Component.text(builder.toString()))
-                    .build()));
-
-
+        final QqBindApi.BindInfo bindInfo;
+        try {
+            bindInfo = this.qqBindApi.queryByQq(member.getId());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return;
         }
+
+        // QQ没有被绑定
+        if (bindInfo == null || bindInfo.uuid() == null) return;
+
+        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
+
+        // 获取游戏名
+        final String name = offlinePlayer.getName();
+
+        // 无法获取游戏名，应该是没进过服务器
+        if (name == null) return;
+
+        // 太久不上线了
+        final long current = System.currentTimeMillis();
+        if (current - offlinePlayer.getFirstPlayed() > 7 * 24 * 60 * 60 * 1000L) return;
+
+        final StringBuilder builder = new StringBuilder();
+
+        for (final SingleMessage singleMessage : messageChain) {
+            if (singleMessage instanceof final At at) { // AT某人
+                final String display = at.getDisplay(group);
+                builder.append(display);
+                this.onMainGroupAtMessage(at, member, name);
+            } else if (singleMessage instanceof final AtAll atAll) { // AT全体
+                builder.append(atAll.contentToString());
+            } else if (singleMessage instanceof final PlainText plainText) { // 纯文本
+                builder.append(plainText.getContent());
+            } else if (singleMessage instanceof final Image image) { // 图片
+                builder.append(image.contentToString());
+            } else if (singleMessage instanceof final Face face) { // 表情
+                builder.append(face.contentToString());
+            } else if (singleMessage instanceof final VipFace vipFace) { // VIP表情
+                builder.append(vipFace.contentToString());
+            }
+        }
+
+        this.taskScheduler.runTask(() -> getServer().broadcast(Component.text()
+                .append(Component.text("<").color(NamedTextColor.GOLD))
+                .append(Component.text(name))
+                .append(Component.text("> ").color(NamedTextColor.GOLD))
+                .append(Component.text(builder.toString()))
+                .build()));
+
     }
 
     private void onMainGroupMessage(@NotNull GroupMessageEvent event) {
