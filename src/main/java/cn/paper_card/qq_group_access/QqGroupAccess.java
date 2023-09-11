@@ -735,11 +735,16 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     @EventHandler
     public void onChat(@NotNull AsyncChatEvent event) {
+        final Component message = event.message();
+        if (!(message instanceof final TextComponent textComponent)) return;
+
+        final String content = textComponent.content();
+
+        if (!content.startsWith("#")) return;
+
         if (this.getBotId() == 0) return;
         if (this.getMainGroupId() == 0) return;
 
-        final Component message = event.message();
-        if (!(message instanceof final TextComponent textComponent)) return;
 
         final GroupAccess mainGroupAccess;
         try {
@@ -749,7 +754,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             return;
         }
 
-        mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), textComponent.content()));
+        mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), content));
     }
 
     @NotNull Permission addPermission(@NotNull String name) {
