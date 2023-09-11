@@ -10,12 +10,15 @@ import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.title.TitlePart;
 import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.*;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
 import net.mamoe.mirai.message.data.*;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.permissions.Permission;
@@ -117,6 +120,38 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         return this.getConfig().getLong(PATH_AUDIT_GROUP_ID, 0);
     }
 
+    private void onMainGroupAtMessage(@NotNull At at, @NotNull Member member, @NotNull String name) {
+        final long target = at.getTarget();
+
+        if (this.qqBindApi == null) return;
+
+        final QqBindApi.BindInfo bindInfo;
+
+        try {
+            bindInfo = this.qqBindApi.queryByQq(target);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return;
+        }
+
+        if (bindInfo == null || bindInfo.uuid() == null) return;
+
+        final Player player = getServer().getPlayer(bindInfo.uuid());
+
+        if (player == null) return;
+        if (!player.isOnline()) return;
+
+        this.taskScheduler.runTask(() -> {
+            player.sendTitlePart(TitlePart.TITLE, Component.text()
+                    .append(Component.text(name).color(NamedTextColor.DARK_AQUA).decorate(TextDecoration.BOLD))
+                    .append(Component.text(" 在群里@你").color(NamedTextColor.GOLD))
+                    .build());
+
+            player.sendTitlePart(TitlePart.SUBTITLE, Component.text("他可能找你有事").color(NamedTextColor.GREEN));
+        });
+
+    }
+
 
     private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull MessageChain messageChain) {
 
@@ -141,6 +176,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 if (singleMessage instanceof final At at) {
                     final String display = at.getDisplay(group);
                     builder.append(display);
+                    this.onMainGroupAtMessage(at, member, name);
                 } else {
                     builder.append(singleMessage.contentToString());
                 }
