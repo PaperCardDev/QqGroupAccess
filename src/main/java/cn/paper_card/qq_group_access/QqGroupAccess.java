@@ -274,6 +274,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 }
             }
         }
+
+        // 处理QQ群根命令
+
     }
 
     private void onAuditGroupMessage(@NotNull GroupMessageEvent event) {
@@ -310,7 +313,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                         你好呀！我是PaperCard机器人喵喵~
                         恭喜你已经通过了审核~
                         我们的QQ主群为：%d
-                        期待你的加入~""".formatted(this.getMainGroupId()));
+                        期待你的加入~
+                        申请入群会直接同意噢~
+                        如果申请之后一分钟内没有入群，
+                        可能是出现了一点故障，
+                        联系审核群其它管理员就好啦~""".formatted(this.getMainGroupId()));
 
                 if (!messageSends.offer(runnable1)) runnable1.run();
 
@@ -563,8 +570,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                             group.sendMessage("""
                                     自动同意老玩家入群：
                                     游戏名：%s
-                                    QQ: %s (%d)
-                                    """.formatted(
+                                    QQ: %s (%d)""".formatted(
                                     name, fromNick, fromId
                             ));
                         };
