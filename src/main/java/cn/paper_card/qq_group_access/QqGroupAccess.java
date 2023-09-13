@@ -15,6 +15,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.TitlePart;
 import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.*;
+import net.mamoe.mirai.data.UserProfile;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
 import net.mamoe.mirai.message.data.*;
@@ -613,14 +614,24 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 return;
             }
 
+            // QQ等级
+            final int level;
+
             // 进入主群的申请
 
             final long fromId = event.getFromId();
             final String fromNick = event.getFromNick();
             final Long invitorId = event.getInvitorId();
 
-            getLogger().info("入群申请 {fromId: %d, fromNick: %s, invitorId: %s}".formatted(
-                    fromId, fromNick, invitorId
+            // 确认QQ等级
+            final Stranger stranger = event.getBot().getStranger(fromId);
+            if (stranger != null) {
+                final UserProfile userProfile = stranger.queryProfile();
+                level = userProfile.getQLevel();
+            } else level = -1;
+
+            getLogger().info("入群申请 {fromId: %d, fromNick: %s, invitorId: %s, level: %d}".formatted(
+                    fromId, fromNick, invitorId, level
             ));
 
             // 查询QQ绑定
@@ -644,16 +655,17 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                                         被封禁玩家申请入群，请手动处理
                                         游戏名：%s
                                         QQ: %s (%s)
-                                        """.formatted(
-                                        name1, fromNick, fromId
+                                        等级: %d""".formatted(
+                                        name1, fromNick, fromId, level
                                 ));
 
                             } else {
                                 group.sendMessage("""
                                         自动同意老玩家入群：
                                         游戏名：%s
-                                        QQ: %s (%d)""".formatted(
-                                        name1, fromNick, fromId
+                                        QQ: %s (%d)
+                                        等级: %d""".formatted(
+                                        name1, fromNick, fromId, level
                                 ));
                             }
 
@@ -675,6 +687,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 }
             }
 
+
             // 查询过审表
             final boolean contains;
             synchronized (this.passAuditQq) {
@@ -684,7 +697,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (contains) {
                 final Runnable runnable = () -> group.sendMessage("""
                         自动同意过审玩家入群：
-                        QQ: %s (%d)""".formatted(fromNick, fromId));
+                        QQ: %s (%d)
+                        等级：%d""".formatted(fromNick, fromId, level));
 
                 if (!messageSends.offer(runnable)) runnable.run();
 
@@ -697,11 +711,13 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                     无法自动处理的入群申请：
                     FromId: %d
                     FromNick: %s
-                    InvitorId: %s"""
+                    InvitorId: %s
+                    Level: %d"""
                     .formatted(
                             fromId,
                             fromNick,
-                            invitorId
+                            invitorId,
+                            level
                     )
             );
 
