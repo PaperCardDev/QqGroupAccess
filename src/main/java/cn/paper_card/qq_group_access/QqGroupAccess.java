@@ -1,5 +1,6 @@
 package cn.paper_card.qq_group_access;
 
+import cn.paper_card.group_root_command.GroupRootCommandApi;
 import cn.paper_card.player_qq_bind.QqBindApi;
 import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
 import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
@@ -26,6 +27,7 @@ import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -41,6 +43,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     private PlayerQqGroupRemarkApi playerQqGroupRemarkApi = null;
 
     private PlayerQqInGroupApi playerQqInGroupApi = null;
+
+    private GroupRootCommandApi groupRootCommandApi = null;
 
     private final @NotNull Object lock = new Object();
 
@@ -94,6 +98,15 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 this.playerQqInGroupApi = api;
             }
 
+        }
+    }
+
+    private void getGroupRootCommandApi() {
+        if (this.groupRootCommandApi == null) {
+            final Plugin plugin = this.getServer().getPluginManager().getPlugin("GroupRootCommand");
+            if (plugin instanceof final GroupRootCommandApi api) {
+                this.groupRootCommandApi = api;
+            }
         }
     }
 
@@ -218,6 +231,45 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     }
 
+    private @NotNull String parseMessageForCommand(@NotNull MessageChain chain) {
+        final StringBuilder builder = new StringBuilder();
+        for (final SingleMessage singleMessage : chain) {
+            if (singleMessage instanceof final PlainText plainText) {
+                builder.append(plainText.getContent());
+            } else if (singleMessage instanceof final At at) {
+                builder.append(at.contentToString());
+            }
+        }
+        return builder.toString();
+    }
+
+    private void executeMainGroupCommand(boolean isAdmin, @NotNull String message, @NotNull MessageChain chain, @NotNull Group group, @NotNull Member member) {
+        if (this.groupRootCommandApi == null) return;
+
+
+        final @Nullable String[] strings = isAdmin ?
+                this.groupRootCommandApi.executeAdminMainGroupCommand(message, member.getId(), group.getId()) :
+                this.groupRootCommandApi.executeMemberMainGroupCommand(message, member.getId(), group.getId());
+
+
+        if (strings == null) return;
+
+        for (final String reply : strings) {
+            if (reply == null || reply.length() == 0) continue;
+
+            final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
+                    .append(new QuoteReply(chain))
+                    .append(new At(member.getId()))
+                    .append(" ")
+                    .append(reply)
+                    .build());
+
+            if (!messageSends.offer(runnable)) runnable.run();
+
+        }
+    }
+
+
     private void onMainGroupMessage(@NotNull GroupMessageEvent event) {
         final Member sender = event.getSender();
         final String messageStr = event.getMessage().contentToString();
@@ -276,6 +328,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         }
 
         // 处理QQ群根命令
+        final String commandLine = parseMessageForCommand(message);
+        executeMainGroupCommand(true, commandLine, message, group, sender);
+        executeMainGroupCommand(false, commandLine, message, group, sender);
 
     }
 
@@ -644,6 +699,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.getQqBindApi();
         this.getPlayerQqGroupRemarkApi();
         this.getPlayerQqInGroupApi();
+        this.getGroupRootCommandApi();
 
         // 好友消息的处理
         this.onFriendMessage();
@@ -787,7 +843,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), content));
     }
 
-    @NotNull Permission addPermission(@NotNull String name) {
+    @NotNull
+    Permission addPermission(@NotNull String name) {
         final Permission permission = new Permission(name);
         this.getServer().getPluginManager().addPermission(permission);
         return permission;
