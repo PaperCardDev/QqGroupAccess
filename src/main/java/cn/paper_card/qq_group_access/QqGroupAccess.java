@@ -439,37 +439,13 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         });
     }
 
-    private @NotNull String getLeaveMemberName(long qq) {
-        if (qqBindApi == null) return "无法访问QQ绑定API！";
-
-
-        final QqBindApi.BindInfo bindInfo;
-        try {
-            bindInfo = qqBindApi.queryByQq(qq);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return e.toString();
-        }
-
-        if (bindInfo == null || bindInfo.uuid() == null) {
-            return "未绑定";
-        }
-
-
-        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
-
-        final String name1 = offlinePlayer.getName();
-
-        if (name1 != null) return name1;
-
-        return offlinePlayer.getUniqueId().toString();
-    }
-
     private void onMemberLeave() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
 
             if (event.getGroupId() != this.getMainGroupId()) return;
+
+            // 退出主群
 
             if (this.playerQqInGroupApi != null)
                 this.playerQqInGroupApi.onMemberQuitGroup(event.getMember().getId());
@@ -478,12 +454,49 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             final Group group = event.getGroup();
             final Member member = event.getMember();
 
+            final long qq = member.getId();
+
+            String name; // 游戏名
+            Player player = null;
+
+            if (this.qqBindApi == null) {
+                name = "无法访问QQ绑定API！";
+            } else {
+                final QqBindApi.BindInfo bindInfo;
+                try {
+                    bindInfo = this.qqBindApi.queryByQq(qq);
+
+                    if (bindInfo != null && bindInfo.uuid() != null) {
+                        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
+
+                        player = offlinePlayer.getPlayer();
+
+                        name = offlinePlayer.getName();
+                        if (name == null) name = offlinePlayer.getUniqueId().toString();
+
+                    } else {
+                        name = "未绑定";
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    name = e.toString();
+                }
+            }
+
+            // 从游戏里踢出玩家
+            final boolean kicked;
+            if (player != null && player.isOnline()) {
+                player.kick(Component.text("你已经被踢出主群！").color(NamedTextColor.RED));
+                kicked = true;
+            } else kicked = false;
+
+            final String name1 = name;
+
             final Runnable runnable = () -> {
                 final long id = member.getId();
-                final String name = getLeaveMemberName(id);
 
-
-                group.sendMessage("%s (%d) 离开了群聊，无白名单\n游戏名：%s".formatted(member.getNick(), member.getId(), name));
+                group.sendMessage("%s (%d) 离开了群聊，无白名单\n游戏名：%s%s".formatted(member.getNick(), member.getId(),
+                        name1, kicked ? "\n已从游戏中踢出" : ""));
             };
 
             if (!messageSends.offer(runnable)) runnable.run();
