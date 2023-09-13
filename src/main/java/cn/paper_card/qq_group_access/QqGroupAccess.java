@@ -630,23 +630,42 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
                     if (bindInfo != null && bindInfo.uuid() != null) {
 
+                        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
+                        String name = offlinePlayer.getName();
+                        if (name == null) name = bindInfo.uuid().toString();
+                        final String name1 = name;
+
+                        final boolean banned = offlinePlayer.isBanned();
 
                         final Runnable runnable = () -> {
-                            String name = getServer().getOfflinePlayer(bindInfo.uuid()).getName();
-                            if (name == null) name = bindInfo.uuid().toString();
 
-                            group.sendMessage("""
-                                    自动同意老玩家入群：
-                                    游戏名：%s
-                                    QQ: %s (%d)""".formatted(
-                                    name, fromNick, fromId
-                            ));
+                            if (banned) {
+                                group.sendMessage("""
+                                        被封禁玩家申请入群，请手动处理
+                                        游戏名：%s
+                                        QQ: %s (%s)
+                                        """.formatted(
+                                        name1, fromNick, fromId
+                                ));
+
+                            } else {
+                                group.sendMessage("""
+                                        自动同意老玩家入群：
+                                        游戏名：%s
+                                        QQ: %s (%d)""".formatted(
+                                        name1, fromNick, fromId
+                                ));
+                            }
+
                         };
 
                         final boolean offer = messageSends.offer(runnable);
                         if (!offer) runnable.run();
 
-                        event.accept();
+                        if (!banned) {
+                            event.accept();
+                        }
+
                         return;
                     }
 
