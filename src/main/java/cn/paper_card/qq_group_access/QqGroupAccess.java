@@ -30,7 +30,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -49,7 +48,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private final @NotNull Object lock = new Object();
 
-    private final @NotNull Gpt gpt;
     private final @NotNull TaskScheduler taskScheduler;
 
     private final static String PATH_BOT_ID = "bot-id";
@@ -67,7 +65,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     private MyScheduledTask myScheduledTask = null;
 
     public QqGroupAccess() {
-        this.gpt = new Gpt();
         this.taskScheduler = UniversalScheduler.getScheduler(this);
         this.messageSends = new LinkedBlockingQueue<>();
     }
@@ -278,34 +275,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         final MessageChain message = event.getMessage();
 
-        if (message.size() == 3) {
-            final SingleMessage singleMessage = message.get(1);
-            final SingleMessage singleMessage1 = message.get(2);
-
-            if (singleMessage instanceof final At at) {
-                if (at.getTarget() == event.getBot().getId()) {
-                    if (singleMessage1 instanceof final PlainText plainText) {
-                        this.taskScheduler.runTaskAsynchronously(() -> {
-                            String resp;
-
-                            try {
-                                resp = this.gpt.request(plainText.getContent(), sender.getId());
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                resp = e.toString();
-                            }
-
-                            group.sendMessage(new MessageChainBuilder()
-                                    .append(new QuoteReply(message))
-                                    .append(new At(sender.getId()))
-                                    .append(new PlainText(" "))
-                                    .append(new PlainText(resp))
-                                    .build());
-                        });
-                    }
-                }
-            }
-        }
 
         if (this.playerQqGroupRemarkApi != null) {
             this.playerQqGroupRemarkApi.updateRemarkByGroupMessage(sender.getId(), sender.getNameCard());
@@ -411,21 +380,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     private void onFriendMessage() {
 
         GlobalEventChannel.INSTANCE.subscribeAlways(FriendMessageEvent.class, event -> {
-            final Friend sender = event.getSender();
-            final String message = event.getMessage().contentToString();
-
-            this.taskScheduler.runTaskAsynchronously(() -> {
-                final String resp;
-
-                try {
-                    resp = this.gpt.request(message, sender.getId());
-                } catch (IOException e) {
-                    sender.sendMessage(e.toString());
-                    return;
-                }
-
-                sender.sendMessage(resp);
-            });
         });
     }
 
@@ -927,23 +881,21 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         @Override
         public void sendNormalMessage(@NotNull String message) {
             final boolean offer = messageSends.offer(() -> group.sendMessage(message));
-            if (!offer) {
-                getLogger().warning("发送消息到群失败！");
-            }
-
+            if (!offer) group.sendMessage(message);
         }
 
         @Override
         public void sendAtMessage(long qq, @NotNull String message) {
-            final boolean offer = messageSends.offer(() -> group.sendMessage(new MessageChainBuilder()
+            final MessageChain chain = new MessageChainBuilder()
                     .append(new At(qq))
                     .append(new PlainText(" "))
                     .append(new PlainText(message))
-                    .build()));
+                    .build();
 
-            if (!offer) {
-                getLogger().warning("发送消息到群失败！");
-            }
+
+            final boolean offer = messageSends.offer(() -> group.sendMessage(chain));
+
+            if (!offer) group.sendMessage(chain);
 
         }
     }
