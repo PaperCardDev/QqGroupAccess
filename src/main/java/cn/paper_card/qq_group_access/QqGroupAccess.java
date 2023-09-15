@@ -558,7 +558,10 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     }
 
     private void onJoinRequest() {
+
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinRequestEvent.class, event -> {
+            getLogger().info("DEBUG: 入群申请事件");
+
             if (event.getBot().getId() != this.getBotId()) return;
             if (event.getGroupId() != this.getMainGroupId()) return;
 
