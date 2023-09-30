@@ -1,6 +1,8 @@
 package cn.paper_card.qq_group_access;
 
+import cn.paper_card.accept_player_manuals.AcceptPlayerManualsApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
+import cn.paper_card.little_skin_login.LittleSkinLoginApi;
 import cn.paper_card.player_qq_bind.QqBindApi;
 import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
 import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
@@ -40,11 +42,16 @@ import java.util.concurrent.LinkedBlockingQueue;
 public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi, Listener {
 
     private QqBindApi qqBindApi = null;
+
+    private LittleSkinLoginApi littleSkinLoginApi = null;
+
     private PlayerQqGroupRemarkApi playerQqGroupRemarkApi = null;
 
     private PlayerQqInGroupApi playerQqInGroupApi = null;
 
     private GroupRootCommandApi groupRootCommandApi = null;
+
+    private AcceptPlayerManualsApi acceptPlayerManualsApi = null;
 
     private final @NotNull Object lock = new Object();
 
@@ -79,6 +86,15 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         }
     }
 
+    private void getLittleSkinLoginApi() {
+        if (this.littleSkinLoginApi == null) {
+            final Plugin plugin = this.getServer().getPluginManager().getPlugin("LittleSkinLogin");
+            if (plugin instanceof final LittleSkinLoginApi api) {
+                this.littleSkinLoginApi = api;
+            }
+        }
+    }
+
     private void getPlayerQqGroupRemarkApi() {
         if (this.playerQqGroupRemarkApi == null) {
             final Plugin plugin = this.getServer().getPluginManager().getPlugin("PlayerQqGroupRemark");
@@ -104,6 +120,15 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             final Plugin plugin = this.getServer().getPluginManager().getPlugin("GroupRootCommand");
             if (plugin instanceof final GroupRootCommandApi api) {
                 this.groupRootCommandApi = api;
+            }
+        }
+    }
+
+    private void getAcceptPlayerManualsApi() {
+        if (this.acceptPlayerManualsApi == null) {
+            final Plugin plugin = this.getServer().getPluginManager().getPlugin("AcceptPlayerManuals");
+            if (plugin instanceof final AcceptPlayerManualsApi api) {
+                this.acceptPlayerManualsApi = api;
             }
         }
     }
@@ -246,8 +271,10 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
 
         final @Nullable String[] strings = isAdmin ?
-                this.groupRootCommandApi.executeAdminMainGroupCommand(message, member.getId(), group.getId()) :
-                this.groupRootCommandApi.executeMemberMainGroupCommand(message, member.getId(), group.getId());
+                this.groupRootCommandApi.executeAdminMainGroupCommand(message, member.getId(), member.getNameCard(),
+                        group.getId(), group.getName()) :
+                this.groupRootCommandApi.executeMemberMainGroupCommand(message, member.getId(), member.getNameCard(),
+                        group.getId(), group.getName());
 
 
         if (strings == null) return;
@@ -282,6 +309,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         this.transportGroupMessage(group, sender, message);
 
+        // QQ绑定验证码相关
         if (this.qqBindApi != null) {
             final List<String> reply = this.qqBindApi.onMainGroupMessage(sender.getId(), messageStr);
             if (reply != null) {
@@ -297,11 +325,51 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             }
         }
 
+        // LittleSkin绑定验证码相关
+        if (this.littleSkinLoginApi != null) {
+            final @Nullable String[] reply = this.littleSkinLoginApi.onMainGroupMessage(messageStr, sender.getId());
+            if (reply != null) {
+                for (final String s : reply) {
+                    if (s == null) continue;
+
+                    final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
+                            .append(new QuoteReply(event.getMessage()))
+                            .append(new At(sender.getId()))
+                            .append(new PlainText(" "))
+                            .append(new PlainText(s))
+                            .build());
+                    if (!messageSends.offer(runnable)) runnable.run();
+                }
+            }
+        }
+
         // 处理QQ群根命令
         final String commandLine = parseMessageForCommand(message);
-        executeMainGroupCommand(true, commandLine, message, group, sender);
+
+        // 管理员命令
+        if (sender.getPermission().getLevel() > 0)
+            executeMainGroupCommand(true, commandLine, message, group, sender);
+
+        // 普通成员命令
         executeMainGroupCommand(false, commandLine, message, group, sender);
 
+        // 玩家同意协议相关
+        if (this.acceptPlayerManualsApi != null) {
+            final @Nullable String[] reply = this.acceptPlayerManualsApi.onMainGroupMessage(messageStr, sender.getId());
+            if (reply != null) {
+                for (final String s : reply) {
+                    if (s == null) continue;
+
+                    final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
+                            .append(new QuoteReply(event.getMessage()))
+                            .append(new At(sender.getId()))
+                            .append(new PlainText(" "))
+                            .append(new PlainText(s))
+                            .build());
+                    if (!messageSends.offer(runnable)) runnable.run();
+                }
+            }
+        }
     }
 
     private void onAuditGroupMessage(@NotNull GroupMessageEvent event) {
@@ -702,9 +770,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         // 获取其它插件接口
         this.getQqBindApi();
+        this.getLittleSkinLoginApi();
         this.getPlayerQqGroupRemarkApi();
         this.getPlayerQqInGroupApi();
         this.getGroupRootCommandApi();
+        this.getAcceptPlayerManualsApi();
 
         // 好友消息的处理
         this.onFriendMessage();
@@ -900,6 +970,17 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             if (!offer) group.sendMessage(chain);
 
+        }
+
+        @Override
+        public void setMute(long qq, int seconds) throws Exception {
+            final NormalMember normalMember = group.get(qq);
+            if (normalMember == null) throw new Exception("QQ%d不在群里！".formatted(qq));
+            try {
+                normalMember.mute(seconds);
+            } catch (RuntimeException e) {
+                throw new Exception(e);
+            }
         }
     }
 }

@@ -12,6 +12,8 @@ public interface QqGroupAccessApi {
         void sendNormalMessage(@NotNull String message);
 
         void sendAtMessage(long qq, @NotNull String message);
+
+        void setMute(long qq, int seconds) throws Exception;
     }
 
     @SuppressWarnings("unused")
