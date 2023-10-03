@@ -3,6 +3,7 @@ package cn.paper_card.qq_group_access;
 import cn.paper_card.accept_player_manuals.AcceptPlayerManualsApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
 import cn.paper_card.little_skin_login.LittleSkinLoginApi;
+import cn.paper_card.paper_card_auth.PaperCardAuthApi;
 import cn.paper_card.player_qq_bind.QqBindApi;
 import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
 import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
@@ -53,11 +54,15 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private AcceptPlayerManualsApi acceptPlayerManualsApi = null;
 
+    private PaperCardAuthApi paperCardAuthApi = null;
+
     private final @NotNull Object lock = new Object();
 
     private final @NotNull TaskScheduler taskScheduler;
 
     private final static String PATH_BOT_ID = "bot-id";
+
+    private final static String PATH_OWNER_ID = "owner-id";
     private final static String PATH_MAIN_GROUP_ID = "main-group-id";
 
     private final static String PATH_AUDIT_GROUP_ID = "audit-group-id";
@@ -111,7 +116,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (plugin instanceof final PlayerQqInGroupApi api) {
                 this.playerQqInGroupApi = api;
             }
-
         }
     }
 
@@ -133,12 +137,29 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         }
     }
 
+    private void getPaperCardAuthApi() {
+        if (this.paperCardAuthApi == null) {
+            final Plugin plugin = this.getServer().getPluginManager().getPlugin("PaperCardAuth");
+            if (plugin instanceof final PaperCardAuthApi api) {
+                this.paperCardAuthApi = api;
+            }
+        }
+    }
+
     void setBotId(long id) {
         this.getConfig().set(PATH_BOT_ID, id);
     }
 
     long getBotId() {
         return this.getConfig().getLong(PATH_BOT_ID, 0);
+    }
+
+    long getOwnerId() {
+        return this.getConfig().getLong(PATH_OWNER_ID, 0);
+    }
+
+    void setOwnerId(long v) {
+        this.getConfig().set(PATH_OWNER_ID, v);
     }
 
     void setMainGroupId(long id) {
@@ -157,6 +178,68 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     @Override
     public long getAuditGroupId() {
         return this.getConfig().getLong(PATH_AUDIT_GROUP_ID, 0);
+    }
+
+    private void onNewFriendRequestEvent() {
+        GlobalEventChannel.INSTANCE.subscribeAlways(NewFriendRequestEvent.class, event -> {
+            final long ownerId = this.getOwnerId();
+            if (ownerId == 0) return;
+
+            final long fromId = event.getFromId();
+
+            final Bot bot = event.getBot();
+
+            getLogger().info("好友申请 {bot: %s(%d), fromId: %d}".formatted(
+                    bot.getNick(), bot.getId(), fromId
+            ));
+
+            // 自动同意来来自主人的好友申请
+            if (fromId == ownerId) {
+                getLogger().info("自动同意来自OWNER的好友申请");
+                event.accept();
+            }
+        });
+    }
+
+    private void onBotInvitedJoinGroupRequestEvent() {
+        GlobalEventChannel.INSTANCE.subscribeAlways(BotInvitedJoinGroupRequestEvent.class, event -> {
+            final long invitorId = event.getInvitorId();
+            final long groupId = event.getGroupId();
+            final Bot bot = event.getBot();
+
+            this.getLogger().info("被邀请加入群 {bot %s(%d), friend: %d, group: %s(%d)}".formatted(
+                    bot.getNick(), bot.getId(), invitorId, event.getGroupName(), event.getGroupId()
+            ));
+
+            final long auditGroupId = this.getAuditGroupId();
+            final long mainGroupId = this.getMainGroupId();
+
+            if (auditGroupId == groupId) {
+                this.getLogger().info("自动同意加入主群");
+                event.accept();
+            } else if (mainGroupId == groupId) {
+                this.getLogger().info("自动同意加入审核群");
+                event.accept();
+            }
+        });
+    }
+
+    private void onBotJoinGroupEvent() {
+        GlobalEventChannel.INSTANCE.subscribeAlways(BotJoinGroupEvent.class, event -> {
+            final long groupId = event.getGroupId();
+            final long mainGroupId = this.getMainGroupId();
+            final long auditGroupId = this.getAuditGroupId();
+
+            if (groupId == mainGroupId || groupId == auditGroupId) {
+                final Runnable run = () -> {
+                    event.getGroup().sendMessage(new PlainText("喵~"));
+                    final NormalMember botAsMember = event.getGroup().getBotAsMember();
+                    botAsMember.setNameCard("喵喵~");
+                };
+
+                if (!messageSends.offer(run)) run.run();
+            }
+        });
     }
 
     private void onMainGroupAtMessage(@NotNull At at, @NotNull Member member, @NotNull String name) {
@@ -340,6 +423,21 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                             .build());
                     if (!messageSends.offer(runnable)) runnable.run();
                 }
+            }
+        }
+
+        // 离线正版验证确认相关
+        if (this.paperCardAuthApi != null) {
+            final String reply = this.paperCardAuthApi.onGroupMessage(sender.getId(), messageStr);
+            if (reply != null) {
+                final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
+                        .append(new QuoteReply(event.getMessage()))
+                        .append(new At(sender.getId()))
+                        .append(new PlainText(" "))
+                        .append(new PlainText(reply))
+                        .build());
+
+                if (!messageSends.offer(runnable)) runnable.run();
             }
         }
 
@@ -766,6 +864,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.setMainGroupId(this.getMainGroupId());
         this.setAuditGroupId(this.getAuditGroupId());
         this.setBotId(this.getBotId());
+        this.setOwnerId(this.getOwnerId());
         this.saveConfig();
 
         // 获取其它插件接口
@@ -775,6 +874,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.getPlayerQqInGroupApi();
         this.getGroupRootCommandApi();
         this.getAcceptPlayerManualsApi();
+        this.getPaperCardAuthApi();
 
         // 好友消息的处理
         this.onFriendMessage();
@@ -793,6 +893,10 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         // 机器人登录事件的处理
         this.onBotLogin();
+
+        this.onNewFriendRequestEvent();
+        this.onBotInvitedJoinGroupRequestEvent();
+        this.onBotJoinGroupEvent();
 
 
         final Random random = new Random();

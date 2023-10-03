@@ -30,6 +30,7 @@ class MainCommand extends TheMcCommand.HasSub {
         this.addSubCommand(new BotId());
         this.addSubCommand(new Group(true));
         this.addSubCommand(new Group(false));
+        this.addSubCommand(new Reload());
     }
 
     @Override
@@ -39,6 +40,33 @@ class MainCommand extends TheMcCommand.HasSub {
 
     private static void sendError(@NotNull CommandSender sender, @NotNull String error) {
         sender.sendMessage(Component.text(error).color(NamedTextColor.DARK_RED));
+    }
+
+    class Reload extends TheMcCommand {
+
+        private final Permission permission;
+
+        protected Reload() {
+            super("reload");
+            this.permission = plugin.addPermission(MainCommand.this.permission.getName() + "." + this.getLabel());
+        }
+
+        @Override
+        protected boolean canNotExecute(@NotNull CommandSender commandSender) {
+            return !commandSender.hasPermission(this.permission);
+        }
+
+        @Override
+        public boolean onCommand(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
+            plugin.reloadConfig();
+            commandSender.sendMessage(Component.text("已重载配置"));
+            return true;
+        }
+
+        @Override
+        public @Nullable List<String> onTabComplete(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
+            return null;
+        }
     }
 
     class BotId extends TheMcCommand {
