@@ -17,8 +17,10 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.TitlePart;
 import net.mamoe.mirai.Bot;
-import net.mamoe.mirai.contact.*;
-import net.mamoe.mirai.data.UserProfile;
+import net.mamoe.mirai.contact.Group;
+import net.mamoe.mirai.contact.Member;
+import net.mamoe.mirai.contact.NormalMember;
+import net.mamoe.mirai.contact.PermissionDeniedException;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
 import net.mamoe.mirai.message.data.*;
@@ -33,6 +35,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -74,11 +77,14 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private final @NotNull BlockingQueue<Runnable> messageSends;
 
+    private final @NotNull HashMap<Long, Long> leaveTimes;
+
     private MyScheduledTask myScheduledTask = null;
 
     public QqGroupAccess() {
         this.taskScheduler = UniversalScheduler.getScheduler(this);
         this.messageSends = new LinkedBlockingQueue<>();
+        this.leaveTimes = new HashMap<>();
     }
 
 
@@ -567,15 +573,14 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (event.getGroupId() != this.getMainGroupId()) return;
 
             // 退出主群
-
-            if (this.playerQqInGroupApi != null)
-                this.playerQqInGroupApi.onMemberQuitGroup(event.getMember().getId());
-
-
             final Group group = event.getGroup();
             final Member member = event.getMember();
 
             final long qq = member.getId();
+
+            if (this.playerQqInGroupApi != null)
+                this.playerQqInGroupApi.onMemberQuitGroup(qq);
+
 
             String name; // 游戏名
             Player player = null;
@@ -607,7 +612,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             // 从游戏里踢出玩家
             final boolean kicked;
             if (player != null && player.isOnline()) {
-                player.kick(Component.text("你已经被踢出主群！").color(NamedTextColor.RED));
+                player.kick(Component.text("你已离开主群！").color(NamedTextColor.RED));
                 kicked = true;
             } else kicked = false;
 
@@ -616,12 +621,16 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             final Runnable runnable = () -> {
                 final long id = member.getId();
 
-                group.sendMessage("%s (%d) 离开了群聊，无白名单\n游戏名：%s%s".formatted(member.getNick(), member.getId(),
+                group.sendMessage("%s (%d) 离开了群聊，撤销白名单\n游戏名：%s%s".formatted(member.getNick(), member.getId(),
                         name1, kicked ? "\n已从游戏中踢出" : ""));
             };
 
             if (!messageSends.offer(runnable)) runnable.run();
 
+            // 保存退出时间
+            synchronized (this.leaveTimes) {
+                this.leaveTimes.put(qq, System.currentTimeMillis());
+            }
         });
     }
 
@@ -737,25 +746,33 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 return;
             }
 
-            // QQ等级
-            final int level;
-
             // 进入主群的申请
 
             final long fromId = event.getFromId();
             final String fromNick = event.getFromNick();
             final Long invitorId = event.getInvitorId();
 
-            // 确认QQ等级
-            final Stranger stranger = event.getBot().getStranger(fromId);
-            if (stranger != null) {
-                final UserProfile userProfile = stranger.queryProfile();
-                level = userProfile.getQLevel();
-            } else level = -1;
 
-            getLogger().info("入群申请 {fromId: %d, fromNick: %s, invitorId: %s, level: %d}".formatted(
-                    fromId, fromNick, invitorId, level
+            getLogger().info("入群申请 {fromId: %d, fromNick: %s, invitorId: %s}".formatted(
+                    fromId, fromNick, invitorId
             ));
+
+            final Long leveTime;
+            synchronized (this.leaveTimes) {
+                leveTime = this.leaveTimes.get(fromId);
+            }
+
+            if (leveTime != null && System.currentTimeMillis() < leveTime + 24 * 60 * 60 * 1000L) {
+                final String msg = """
+                        不会自动处理的入群申请，因为在短时间内离开了群聊
+                        QQ: %s(%s)""".formatted(fromNick, fromId);
+
+                final Runnable runnable = () -> group.sendMessage(msg);
+
+                if (!messageSends.offer(runnable)) runnable.run();
+                return;
+            }
+
 
             // 查询QQ绑定
             if (this.qqBindApi != null) {
@@ -777,18 +794,16 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                                 group.sendMessage("""
                                         被封禁玩家申请入群，请手动处理
                                         游戏名：%s
-                                        QQ: %s (%s)
-                                        等级: %d""".formatted(
-                                        name1, fromNick, fromId, level
+                                        QQ: %s (%s)""".formatted(
+                                        name1, fromNick, fromId
                                 ));
 
                             } else {
                                 group.sendMessage("""
                                         自动同意老玩家入群：
                                         游戏名：%s
-                                        QQ: %s (%d)
-                                        等级: %d""".formatted(
-                                        name1, fromNick, fromId, level
+                                        QQ: %s (%d)""".formatted(
+                                        name1, fromNick, fromId
                                 ));
                             }
 
@@ -820,8 +835,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (contains) {
                 final Runnable runnable = () -> group.sendMessage("""
                         自动同意过审玩家入群：
-                        QQ: %s (%d)
-                        等级：%d""".formatted(fromNick, fromId, level));
+                        QQ: %s (%d)""".formatted(fromNick, fromId));
 
                 if (!messageSends.offer(runnable)) runnable.run();
 
@@ -834,13 +848,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                     无法自动处理的入群申请：
                     FromId: %d
                     FromNick: %s
-                    InvitorId: %s
-                    Level: %d"""
+                    InvitorId: %s"""
                     .formatted(
                             fromId,
                             fromNick,
-                            invitorId,
-                            level
+                            invitorId
                     )
             );
 
