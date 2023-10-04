@@ -248,6 +248,43 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         });
     }
 
+    private void onGroupTempMessageEvent() {
+
+        GlobalEventChannel.INSTANCE.subscribeAlways(GroupTempMessageEvent.class, event -> {
+            final Bot bot = event.getBot();
+            if (bot.getId() != this.getBotId()) return;
+
+            final Group group = event.getGroup();
+            if (group.getId() != this.getAuditGroupId()) return;
+
+            final NormalMember sender = event.getSender();
+
+            final boolean contains;
+            synchronized (this.passAuditQq) {
+                contains = this.passAuditQq.contains(sender.getId());
+            }
+
+            if (!contains) return;
+
+            final MessageChain message = event.getMessage();
+            final String s = message.contentToString();
+            if ("入群方式".equals(s)) {
+
+                final Runnable runnable = () -> sender.sendMessage("""
+                        你好呀！恭喜你已经通过了审核~
+                        我们的QQ主群为：%d
+                        期待你的加入~
+                        申请入群会直接同意噢~
+                        如果申请之后一分钟内没有入群，
+                        可能是出现了一点故障，
+                        联系审核群其它管理员就好啦~""".formatted(this.getMainGroupId()));
+
+                if (!messageSends.offer(runnable)) runnable.run();
+
+            }
+        });
+    }
+
     private void onMainGroupAtMessage(@NotNull At at, @NotNull Member member, @NotNull String name) {
         final long target = at.getTarget();
 
@@ -493,30 +530,19 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             if (removed) {
 
-                final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
-                        .append(new At(event.getSender().getId()))
-                        .append(" 已将入群方式通过私信发送给你啦~\n如果没有收到，可以联系管理员~")
-                        .build());
-
-                if (!messageSends.offer(runnable)) runnable.run();
-
                 synchronized (this.passAuditQq) {
                     this.passAuditQq.add(event.getSender().getId());
                 }
 
-                final Member sender = event.getSender();
+                final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
+                        .append(new QuoteReply(message))
+                        .append(new At(event.getSender().getId()))
+                        .append(" ")
+                        .append("""
+                                请通过【私信】向我发送消息 "入群方式" 获得主群群号~""")
+                        .build());
 
-                final Runnable runnable1 = () -> sender.sendMessage("""
-                        你好呀！我是PaperCard机器人喵喵~
-                        恭喜你已经通过了审核~
-                        我们的QQ主群为：%d
-                        期待你的加入~
-                        申请入群会直接同意噢~
-                        如果申请之后一分钟内没有入群，
-                        可能是出现了一点故障，
-                        联系审核群其它管理员就好啦~""".formatted(this.getMainGroupId()));
-
-                if (!messageSends.offer(runnable1)) runnable1.run();
+                if (!messageSends.offer(runnable)) runnable.run();
 
             } else {
 
@@ -545,7 +571,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             synchronized (this.auditSendImageQq) {
                 this.auditSendImageQq.add(event.getSender().getId());
             }
-
         }
     }
 
@@ -680,6 +705,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 if (event.getGroupId() != this.getMainGroupId()) return;
                 if (this.playerQqInGroupApi != null) {
                     this.playerQqInGroupApi.onMemberJoinGroup(event.getMember().getId());
+                }
+
+                // 重过审集合中移出
+                synchronized (this.passAuditQq) {
+                    this.passAuditQq.remove(event.getMember().getId());
                 }
 
                 final Runnable runnable = () -> {
@@ -909,6 +939,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.onNewFriendRequestEvent();
         this.onBotInvitedJoinGroupRequestEvent();
         this.onBotJoinGroupEvent();
+
+        this.onGroupTempMessageEvent();
 
 
         final Random random = new Random();
