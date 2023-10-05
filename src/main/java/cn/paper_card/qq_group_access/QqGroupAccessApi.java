@@ -2,7 +2,24 @@ package cn.paper_card.qq_group_access;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
+
 public interface QqGroupAccessApi {
+
+    @SuppressWarnings("unused")
+    interface GroupMember {
+
+        long getQq(); // QQ 号码
+
+        int getJoinTime(); // 入群时间
+
+        int getActiveLevel(); // 活跃等级
+
+        String getSpecialTitle(); // 群头衔
+
+        int getPermissionLevel(); // 权限等级
+    }
+
     @SuppressWarnings("unused")
     interface GroupAccess {
         boolean hasMember(long qq) throws Exception;
@@ -14,6 +31,8 @@ public interface QqGroupAccessApi {
         void sendAtMessage(long qq, @NotNull String message);
 
         void setMute(long qq, int seconds) throws Exception;
+
+        @NotNull List<GroupMember> getAllMembers();
     }
 
     @SuppressWarnings("unused")

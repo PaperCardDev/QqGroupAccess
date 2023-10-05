@@ -35,10 +35,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -1129,6 +1126,49 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             } catch (RuntimeException e) {
                 throw new Exception(e);
             }
+        }
+
+        @Override
+        public @NotNull List<GroupMember> getAllMembers() {
+            final LinkedList<GroupMember> list = new LinkedList<>();
+            for (final NormalMember member : group.getMembers()) {
+                list.add(new GroupMemberImpl(member));
+            }
+            return list;
+        }
+    }
+
+    static class GroupMemberImpl implements GroupMember {
+
+        private final @NotNull NormalMember member;
+
+        GroupMemberImpl(@NotNull NormalMember member) {
+            this.member = member;
+        }
+
+        @Override
+        public long getQq() {
+            return this.member.getId();
+        }
+
+        @Override
+        public int getJoinTime() {
+            return this.member.getJoinTimestamp();
+        }
+
+        @Override
+        public int getActiveLevel() {
+            return this.member.getActive().getTemperature();
+        }
+
+        @Override
+        public String getSpecialTitle() {
+            return this.member.getSpecialTitle();
+        }
+
+        @Override
+        public int getPermissionLevel() {
+            return this.member.getPermission().getLevel();
         }
     }
 }
