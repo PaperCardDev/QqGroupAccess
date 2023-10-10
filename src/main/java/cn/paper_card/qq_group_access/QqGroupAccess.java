@@ -21,6 +21,7 @@ import net.mamoe.mirai.contact.Group;
 import net.mamoe.mirai.contact.Member;
 import net.mamoe.mirai.contact.NormalMember;
 import net.mamoe.mirai.contact.PermissionDeniedException;
+import net.mamoe.mirai.data.UserProfile;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
 import net.mamoe.mirai.message.data.*;
@@ -710,10 +711,16 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 }
 
                 final Runnable runnable = () -> {
+
+                    final int level;
+                    final UserProfile userProfile = event.getMember().queryProfile();
+                    level = userProfile.getQLevel();
+
                     final String msg = """
                             \n欢迎新伙伴入裙~
+                            您的QQ等级为: %d
                             请查看群公告【新人必看】（服务器地址在这里噢）
-                            祝您游戏愉快~""";
+                            祝您游戏愉快~""".formatted(level);
 
                     final Group group = event.getGroup();
 
@@ -1152,6 +1159,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         }
 
         @Override
+        public String getNick() {
+            return this.member.getNick();
+        }
+
+        @Override
         public int getJoinTime() {
             return this.member.getJoinTimestamp();
         }
@@ -1169,6 +1181,15 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         @Override
         public int getPermissionLevel() {
             return this.member.getPermission().getLevel();
+        }
+
+        @Override
+        public void kick(String message) throws Exception {
+            try {
+                this.member.kick(message);
+            } catch (RuntimeException e) {
+                throw new Exception(e);
+            }
         }
     }
 }

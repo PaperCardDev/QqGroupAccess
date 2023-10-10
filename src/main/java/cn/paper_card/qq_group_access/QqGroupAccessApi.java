@@ -11,6 +11,8 @@ public interface QqGroupAccessApi {
 
         long getQq(); // QQ 号码
 
+        String getNick(); // 昵称
+
         int getJoinTime(); // 入群时间
 
         int getActiveLevel(); // 活跃等级
@@ -18,6 +20,8 @@ public interface QqGroupAccessApi {
         String getSpecialTitle(); // 群头衔
 
         int getPermissionLevel(); // 权限等级
+
+        void kick(String message) throws Exception;
     }
 
     @SuppressWarnings("unused")
