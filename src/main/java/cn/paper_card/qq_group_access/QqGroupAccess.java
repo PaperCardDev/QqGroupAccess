@@ -537,7 +537,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                         .append(new At(event.getSender().getId()))
                         .append(" ")
                         .append("""
-                                请通过【私信】向我发送消息 "入群方式" 获得主群群号~""")
+                                已颁发入群令牌，QQ主群为：%d
+                                请在两分钟内申请加入~
+                                您的QQ: %s(%d)""".formatted(getMainGroupId(), event.getSenderName(), event.getSender().getId()))
                         .build());
 
                 if (!messageSends.offer(runnable)) runnable.run();
