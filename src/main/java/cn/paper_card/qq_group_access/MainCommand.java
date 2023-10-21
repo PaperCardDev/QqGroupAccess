@@ -3,8 +3,11 @@ package cn.paper_card.qq_group_access;
 import cn.paper_card.mc_command.TheMcCommand;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.mamoe.mirai.Bot;
+import net.mamoe.mirai.contact.AvatarSpec;
 import net.mamoe.mirai.contact.NormalMember;
 import net.mamoe.mirai.contact.active.MemberActive;
 import net.mamoe.mirai.data.UserProfile;
@@ -287,6 +290,13 @@ class MainCommand extends TheMcCommand.HasSub {
                     text.append(Component.text("Nick: %s".formatted(normalMember.getNick())));
                     text.appendNewline();
 
+                    final String avatarUrl = normalMember.getAvatarUrl(AvatarSpec.LARGEST);
+                    text.append(Component.text("AvatarUrl: "));
+                    text.append(Component.text(avatarUrl).color(NamedTextColor.GREEN)
+                            .decorate(TextDecoration.UNDERLINED)
+                            .clickEvent(ClickEvent.openUrl(avatarUrl))
+                    );
+
                     final String nameCard = normalMember.getNameCard();
                     text.append(Component.text("NameCard: %s".formatted(nameCard)));
                     text.appendNewline();
@@ -313,6 +323,7 @@ class MainCommand extends TheMcCommand.HasSub {
 
                     final int permissionLevel = normalMember.getPermission().getLevel();
                     text.append(Component.text("PermissionLevel: %d".formatted(permissionLevel)));
+                    text.appendNewline();
 
                     final MemberActive active = normalMember.getActive();
                     final int temperature = active.getTemperature();
@@ -342,7 +353,9 @@ class MainCommand extends TheMcCommand.HasSub {
                     text.appendNewline();
 
                     final UserProfile.Sex sex = userProfile.getSex();
-                    text.append(Component.text("UserProfile.Sex: %s(%s)".formatted(sex.toString(), sex.getClass().getSimpleName())));
+                    final int ordinal = sex.ordinal();
+                    final String name = sex.name();
+                    text.append(Component.text("UserProfile.Sex: %s(%d)".formatted(name, ordinal)));
                     text.appendNewline();
 
                     final int qLevel = userProfile.getQLevel();
