@@ -663,6 +663,54 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         });
     }
 
+    private boolean checkPlayerJoinGroup(long qq, MemberJoinEvent event, int qLevel) {
+        if (this.qqBindApi == null) return false;
+
+        // 看看是否老玩家入群
+        final QqBindApi.BindInfo bindInfo;
+
+        try {
+            bindInfo = this.qqBindApi.queryByQq(qq);
+        } catch (Exception e) {
+            e.printStackTrace();
+            final Runnable runnable = () -> event.getGroup().sendMessage(e.toString());
+            if (!messageSends.offer(runnable)) runnable.run();
+            return false;
+        }
+
+        if (bindInfo == null) return false;
+
+        final UUID uuid = bindInfo.uuid();
+
+        if (uuid == null) return false;
+
+        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(uuid);
+        String name = offlinePlayer.getName();
+        if (name == null) name = uuid.toString();
+
+        final String nameF = name;
+        final Runnable runnable = () -> {
+
+            final String msg = """
+                    \n欢迎回到PaperCard~
+                    您的游戏名: %s
+                    您的QQ等级: %d
+                    请查看群公告【新人必看】（服务器地址在这里噢）
+                    祝您游戏愉快~""".formatted(nameF, qLevel);
+
+            final Group group = event.getGroup();
+
+            group.sendMessage(new MessageChainBuilder()
+                    .append(new At(event.getMember().getId()))
+                    .append(msg)
+                    .build());
+        };
+
+        if (!messageSends.offer(runnable)) runnable.run();
+
+        return true;
+    }
+
     private void onMemberJoin() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
@@ -707,20 +755,27 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (event.getGroupId() == getMainGroupId()) { // 进入主群
 
                 if (event.getGroupId() != this.getMainGroupId()) return;
+
+                final long joinQq = event.getMember().getId();
+
                 if (this.playerQqInGroupApi != null) {
-                    this.playerQqInGroupApi.onMemberJoinGroup(event.getMember().getId());
+                    this.playerQqInGroupApi.onMemberJoinGroup(joinQq);
                 }
 
                 // 重过审集合中移出
+                final boolean removed;
                 synchronized (this.passAuditQq) {
-                    this.passAuditQq.remove(event.getMember().getId());
+                    removed = this.passAuditQq.remove(joinQq);
                 }
 
-                final Runnable runnable = () -> {
+                final int level;
+                final UserProfile userProfile = event.getMember().queryProfile();
+                level = userProfile.getQLevel();
 
-                    final int level;
-                    final UserProfile userProfile = event.getMember().queryProfile();
-                    level = userProfile.getQLevel();
+                // 检查是否老玩家入群
+                if (this.checkPlayerJoinGroup(joinQq, event, level)) return;
+
+                final Runnable runnable = () -> {
 
                     final String msg = """
                             \n欢迎新伙伴入裙~
@@ -731,14 +786,29 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                     final Group group = event.getGroup();
 
                     group.sendMessage(new MessageChainBuilder()
-                            .append(new At(event.getMember().getId()))
+                            .append(new At(joinQq))
                             .append(msg)
                             .build());
 
                 };
+                if (!messageSends.offer(runnable)) runnable.run();
 
-                final boolean offer = messageSends.offer(runnable);
-                if (!offer) runnable.run();
+                // 检查令牌
+                final Runnable runnable1 = () -> {
+                    final String msg;
+                    if (removed) {
+                        msg = "已回收你的入群令牌";
+                    } else {
+                        msg = "未检测到你的入群令牌，请先加入审核群%d获取令牌！".formatted(this.getAuditGroupId());
+                    }
+
+                    event.getGroup().sendMessage(new MessageChainBuilder()
+                            .append(new At(joinQq))
+                            .append(" ")
+                            .append(msg)
+                            .build());
+                };
+                if (!messageSends.offer(runnable1)) runnable1.run();
 
                 // 如果在审核群里，提示退出审核群
                 final GroupAccess auditGroupAccess;
@@ -804,7 +874,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
             if (leveTime != null && System.currentTimeMillis() < leveTime + 24 * 60 * 60 * 1000L) {
                 final String msg = """
-                        不会自动处理的入群申请，因为在短时间内离开了群聊
+                        不自动处理的入群申请，因为在短时间内离开了群聊
                         QQ: %s(%s)""".formatted(fromNick, fromId);
 
                 final Runnable runnable = () -> group.sendMessage(msg);
@@ -861,10 +931,10 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
                 } catch (Exception e) {
                     e.printStackTrace();
-                    group.sendMessage(e.toString());
+                    final Runnable run = () -> group.sendMessage(e.toString());
+                    if (!messageSends.offer(run)) run.run();
                 }
             }
-
 
             // 查询过审表
             final boolean contains;
@@ -883,15 +953,38 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 return;
             }
 
+            // 是否在审核群中
+            try {
+                final GroupAccess auditGroupAccess = createAuditGroupAccess();
+                final boolean hasMember = auditGroupAccess.hasMember(fromId);
+                if (hasMember) {
+
+                    event.reject(false, "请先通过审核！");
+                    auditGroupAccess.sendAtMessage(fromId, "请先发送三连截图到群里，再@我，得到入群令牌后，再申请加入主群！");
+
+                    final Runnable runnable = () -> {
+                        final String msg = """
+                                已自动拒绝无令牌的入群申请：
+                                %s (%d)""".formatted(fromNick, fromId);
+                        group.sendMessage(msg);
+                    };
+
+                    if (!messageSends.offer(runnable)) runnable.run();
+                    return;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                final Runnable run = () -> group.sendMessage(e.toString());
+                if (!messageSends.offer(run)) run.run();
+            }
 
             final Runnable runnable = () -> group.sendMessage("""
-                    无法自动处理的入群申请：
-                    FromId: %d
-                    FromNick: %s
+                    无入群令牌，不会自动处理入群申请：
+                    %s (%d)
                     InvitorId: %s"""
                     .formatted(
-                            fromId,
                             fromNick,
+                            fromId,
                             invitorId
                     )
             );
