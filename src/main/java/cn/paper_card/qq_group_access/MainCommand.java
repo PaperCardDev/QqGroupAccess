@@ -360,7 +360,7 @@ class MainCommand extends TheMcCommand.HasSub {
                     return;
                 }
 
-                sendError(commandSender, "没有任何一个机器人能范围QQ群[%d]".formatted(mainGroupId));
+                sendError(commandSender, "没有任何一个机器人能访问QQ群[%d]".formatted(mainGroupId));
             });
 
             return true;
