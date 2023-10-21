@@ -2,8 +2,12 @@ package cn.paper_card.qq_group_access;
 
 import cn.paper_card.mc_command.TheMcCommand;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.mamoe.mirai.Bot;
+import net.mamoe.mirai.contact.NormalMember;
+import net.mamoe.mirai.contact.active.MemberActive;
+import net.mamoe.mirai.data.UserProfile;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.permissions.Permission;
@@ -30,6 +34,7 @@ class MainCommand extends TheMcCommand.HasSub {
         this.addSubCommand(new BotId());
         this.addSubCommand(new Group(true));
         this.addSubCommand(new Group(false));
+        this.addSubCommand(new Member());
         this.addSubCommand(new Reload());
     }
 
@@ -226,4 +231,153 @@ class MainCommand extends TheMcCommand.HasSub {
             return null;
         }
     }
+
+    class Member extends TheMcCommand {
+
+        private final @NotNull Permission permission;
+
+        protected Member() {
+            super("member");
+            this.permission = plugin.addPermission(MainCommand.this.permission.getName() + "." + this.getLabel());
+        }
+
+        @Override
+        protected boolean canNotExecute(@NotNull CommandSender commandSender) {
+            return !commandSender.hasPermission(this.permission);
+        }
+
+        @Override
+        public boolean onCommand(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
+            final String argQq = strings.length > 0 ? strings[0] : null;
+
+            final long qq;
+            if (argQq == null) {
+                sendError(commandSender, "你必须提供参数：QQ号");
+                return true;
+            }
+
+            try {
+                qq = Long.parseLong(argQq);
+            } catch (NumberFormatException e) {
+                sendError(commandSender, "%s 不是正确的QQ号".formatted(argQq));
+                return true;
+            }
+
+            plugin.getTaskScheduler().runTaskAsynchronously(() -> {
+                final long mainGroupId = plugin.getMainGroupId();
+                for (Bot bot : Bot.getInstances()) {
+                    if (bot == null) continue;
+                    if (!bot.isOnline()) continue;
+
+
+                    final net.mamoe.mirai.contact.Group group = bot.getGroup(mainGroupId);
+                    if (group == null) continue;
+
+                    final NormalMember normalMember = group.get(qq);
+                    if (normalMember == null) {
+                        sendError(commandSender, "QQ群[%d]中不包含成员QQ[%d]".formatted(mainGroupId, qq));
+                        return;
+                    }
+
+                    final TextComponent.Builder text = Component.text();
+
+                    text.append(Component.text("ID: %d".formatted(normalMember.getId())));
+                    text.appendNewline();
+
+                    text.append(Component.text("Nick: %s".formatted(normalMember.getNick())));
+                    text.appendNewline();
+
+                    final String nameCard = normalMember.getNameCard();
+                    text.append(Component.text("NameCard: %s".formatted(nameCard)));
+                    text.appendNewline();
+
+                    final int joinTimestamp = normalMember.getJoinTimestamp();
+                    text.append(Component.text("JoinTimeStamp: %d".formatted(joinTimestamp)));
+                    text.appendNewline();
+
+                    final String specialTitle = normalMember.getSpecialTitle();
+                    text.append(Component.text("SpecialTitle: %s".formatted(specialTitle)));
+                    text.appendNewline();
+
+                    final String remark = normalMember.getRemark();
+                    text.append(Component.text("Remark: %s".formatted(remark)));
+                    text.appendNewline();
+
+                    final String rankTitle = normalMember.getRankTitle();
+                    text.append(Component.text("RankTitle: %s".formatted(rankTitle)));
+                    text.appendNewline();
+
+                    final String temperatureTitle = normalMember.getTemperatureTitle();
+                    text.append(Component.text("TemperatureTitle: %s".formatted(temperatureTitle)));
+                    text.appendNewline();
+
+                    final int permissionLevel = normalMember.getPermission().getLevel();
+                    text.append(Component.text("PermissionLevel: %d".formatted(permissionLevel)));
+
+                    final MemberActive active = normalMember.getActive();
+                    final int temperature = active.getTemperature();
+                    text.append(Component.text("ActiveTemperature: %d".formatted(temperature)));
+                    text.appendNewline();
+
+                    final int point = active.getPoint();
+                    text.append(Component.text("ActivePoint: %d".formatted(point)));
+                    text.appendNewline();
+
+                    final int rank = active.getRank();
+                    text.append(Component.text("ActiveRank: %d".formatted(rank)));
+                    text.appendNewline();
+
+                    final UserProfile userProfile = normalMember.queryProfile();
+                    final int age = userProfile.getAge();
+
+                    text.append(Component.text("UserProfile.Age: %d".formatted(age)));
+                    text.appendNewline();
+
+                    final String email = userProfile.getEmail();
+                    text.append(Component.text("UserProfile.Email: %s".formatted(email)));
+                    text.appendNewline();
+
+                    final String sign = userProfile.getSign();
+                    text.append(Component.text("UserProfile.Sign: %s".formatted(sign)));
+                    text.appendNewline();
+
+                    final UserProfile.Sex sex = userProfile.getSex();
+                    text.append(Component.text("UserProfile.Sex: %s(%s)".formatted(sex.toString(), sex.getClass().getSimpleName())));
+                    text.appendNewline();
+
+                    final int qLevel = userProfile.getQLevel();
+                    text.append(Component.text("UserProfile:QLevel: %d".formatted(qLevel)));
+                    text.appendNewline();
+
+                    final String nickname = userProfile.getNickname();
+                    text.append(Component.text("UserProfile:NickName: %s".formatted(nickname)));
+                    text.appendNewline();
+
+                    final int friendGroupId = userProfile.getFriendGroupId();
+                    text.append(Component.text("UserProfile.FriendGroupId: %d".formatted(friendGroupId)));
+
+                    commandSender.sendMessage(text.build());
+                    return;
+                }
+
+                sendError(commandSender, "没有任何一个机器人能范围QQ群[%d]".formatted(mainGroupId));
+            });
+
+            return true;
+        }
+
+        @Override
+        public @Nullable List<String> onTabComplete(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
+            if (strings.length == 1) {
+                final String arg = strings[0];
+                if (arg.isEmpty()) {
+                    final LinkedList<String> list = new LinkedList<>();
+                    list.add("<QQ>");
+                    return list;
+                }
+            }
+            return null;
+        }
+    }
+
 }

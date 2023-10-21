@@ -150,6 +150,10 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         }
     }
 
+    @NotNull TaskScheduler getTaskScheduler() {
+        return this.taskScheduler;
+    }
+
     void setBotId(long id) {
         this.getConfig().set(PATH_BOT_ID, id);
     }
