@@ -7,7 +7,6 @@ import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.mamoe.mirai.Bot;
-import net.mamoe.mirai.contact.AvatarSpec;
 import net.mamoe.mirai.contact.NormalMember;
 import net.mamoe.mirai.contact.active.MemberActive;
 import net.mamoe.mirai.data.UserProfile;
@@ -290,12 +289,13 @@ class MainCommand extends TheMcCommand.HasSub {
                     text.append(Component.text("Nick: %s".formatted(normalMember.getNick())));
                     text.appendNewline();
 
-                    final String avatarUrl = normalMember.getAvatarUrl(AvatarSpec.LARGEST);
+                    final String avatarUrl = normalMember.getAvatarUrl();
                     text.append(Component.text("AvatarUrl: "));
                     text.append(Component.text(avatarUrl).color(NamedTextColor.GREEN)
                             .decorate(TextDecoration.UNDERLINED)
                             .clickEvent(ClickEvent.openUrl(avatarUrl))
                     );
+                    text.appendNewline();
 
                     final String nameCard = normalMember.getNameCard();
                     text.append(Component.text("NameCard: %s".formatted(nameCard)));
