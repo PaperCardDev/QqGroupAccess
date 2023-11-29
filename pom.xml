@@ -41,7 +41,14 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
                                 <filter>
-                                    <artifact>cn.paper_card:*</artifact>
+                                    <artifact>com.github.PaperCardDev:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.MF</exclude>
+                                    </excludes>
+                                </filter>
+
+                                <filter>
+                                    <artifact>org.jetbrains:*</artifact>
                                     <excludes>
                                         <exclude>META-INF/*.MF</exclude>
                                     </excludes>
@@ -89,6 +96,12 @@
             <artifactId>paper-api</artifactId>
             <version>1.20.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.PaperCardDev</groupId>
+            <artifactId>qq-group-access-api</artifactId>
+            <version>1.0</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/com.google.code.gson/gson -->

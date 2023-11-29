@@ -1,16 +1,12 @@
 name: QqGroupAccess
 version: '${project.version}'
-main: cn.paper_card.qq_group_access.QqGroupAccess
+main: cn.paper_card.qq_group_access.ThePlugin
 api-version: '1.20'
 author: Paper99
 folia-supported: true
 
 depend:
   - PaperCardMirai
-  - PlayerQqBind
-  - PlayerQqGroupRemark
-  - PlayerQqInGroup
-  - GroupRootCommand
 
 commands:
   qq-group-access:

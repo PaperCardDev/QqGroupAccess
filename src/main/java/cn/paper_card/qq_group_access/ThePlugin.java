@@ -8,6 +8,8 @@ import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
 import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
 import cn.paper_card.qq_bind.api.BindInfo;
 import cn.paper_card.qq_bind.api.QqBindApi;
+import cn.paper_card.qq_group_access.api.GroupAccess;
+import cn.paper_card.qq_group_access.api.QqGroupAccessApi;
 import com.github.Anon8281.universalScheduler.UniversalScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.schedulers.TaskScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.tasks.MyScheduledTask;
@@ -21,7 +23,6 @@ import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.Group;
 import net.mamoe.mirai.contact.Member;
 import net.mamoe.mirai.contact.NormalMember;
-import net.mamoe.mirai.contact.PermissionDeniedException;
 import net.mamoe.mirai.data.UserProfile;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
@@ -33,6 +34,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -42,7 +44,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 @SuppressWarnings("unused")
-public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi, Listener {
+public final class ThePlugin extends JavaPlugin implements Listener {
 
     private QqBindApi qqBindApi = null;
 
@@ -81,7 +83,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private MyScheduledTask myScheduledTask = null;
 
-    public QqGroupAccess() {
+    private QqGroupAccessImpl qqGroupAccess = null;
+
+    public ThePlugin() {
         this.taskScheduler = UniversalScheduler.getScheduler(this);
         this.messageSends = new LinkedBlockingQueue<>();
         this.leaveTimes = new HashMap<>();
@@ -149,8 +153,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.getConfig().set(PATH_MAIN_GROUP_ID, id);
     }
 
-    @Override
-    public long getMainGroupId() {
+
+    long getMainGroupId() {
         return this.getConfig().getLong(PATH_MAIN_GROUP_ID, 0);
     }
 
@@ -158,8 +162,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.getConfig().set(PATH_AUDIT_GROUP_ID, id);
     }
 
-    @Override
-    public long getAuditGroupId() {
+
+    long getAuditGroupId() {
         return this.getConfig().getLong(PATH_AUDIT_GROUP_ID, 0);
     }
 
@@ -803,7 +807,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                     return;
                 }
 
-                auditGroupAccess.sendAtMessage(event.getMember().getId(), "恭喜你已经进入主群，现在可以退出审核群啦~");
+                try {
+                    auditGroupAccess.sendAtMessage(event.getMember().getId(), "恭喜你已经进入主群，现在可以退出审核群啦~");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         });
     }
@@ -821,7 +829,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 return;
             }
 
-            mainGroupAccess.sendNormalMessage("QQ机器人登录成功，服务器已经启动啦~");
+            try {
+                mainGroupAccess.sendNormalMessage("QQ机器人登录成功，服务器已经启动啦~");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
         });
     }
@@ -978,6 +990,14 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     }
 
     @Override
+    public void onLoad() {
+        this.qqGroupAccess = new QqGroupAccessImpl(this);
+
+        this.getSLF4JLogger().info("注册%s...".formatted(PlayerQqInGroupApi.QqGroupAccess.class.getSimpleName()));
+        this.getServer().getServicesManager().register(QqGroupAccessApi.class, this.qqGroupAccess, this, ServicePriority.Highest);
+    }
+
+    @Override
     public void onEnable() {
 
         this.getServer().getPluginManager().registerEvents(this, this);
@@ -1073,8 +1093,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     }
 
 
-    @Override
-    public @NotNull GroupAccess createMainGroupAccess() throws Exception {
+    @NotNull GroupAccess createMainGroupAccess() throws Exception {
         final long mainGroupId = this.getMainGroupId();
         final long botId = this.getBotId();
 
@@ -1101,12 +1120,12 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 throw new Exception("QQ机器人[%d]无法访问QQ主群[%d]，请手动邀请QQ机器人入群！".formatted(botId, mainGroupId));
             }
 
-            return new GroupAccessImpl(group);
+            return new GroupAccessImpl(group, messageSends);
         }
     }
 
-    @Override
-    public @NotNull GroupAccess createAuditGroupAccess() throws Exception {
+
+    @NotNull GroupAccess createAuditGroupAccess() throws Exception {
         final long auditGroupId = this.getAuditGroupId();
         final long botId = this.getBotId();
 
@@ -1132,7 +1151,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 throw new Exception("QQ机器人[%d]无法访问QQ群[%d]，请手动邀请QQ机器人入群！".formatted(botId, auditGroupId));
             }
 
-            return new GroupAccessImpl(group);
+            return new GroupAccessImpl(group, messageSends);
 
         }
     }
@@ -1158,7 +1177,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             return;
         }
 
-        mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), content));
+        try {
+            mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), content));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @NotNull
@@ -1168,124 +1191,5 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         return permission;
     }
 
-    class GroupAccessImpl implements GroupAccess {
 
-        private final @NotNull Group group;
-
-        GroupAccessImpl(@NotNull Group group) {
-            this.group = group;
-        }
-
-        @Override
-        public boolean hasMember(long qq) {
-            final NormalMember normalMember = this.group.get(qq);
-            return normalMember != null;
-        }
-
-        @Override
-        public void setGroupMemberRemark(long qq, @NotNull String remark) throws Exception {
-            final NormalMember normalMember = this.group.get(qq);
-            if (normalMember == null) throw new Exception("QQ群[%d]里没有该成员：%d".formatted(this.group.getId(), qq));
-
-            try {
-                normalMember.setNameCard(remark);
-            } catch (PermissionDeniedException e) {
-                throw new Exception(e);
-            }
-        }
-
-        @Override
-        public void sendNormalMessage(@NotNull String message) {
-            final boolean offer = messageSends.offer(() -> group.sendMessage(message));
-            if (!offer) group.sendMessage(message);
-        }
-
-        @Override
-        public void sendAtMessage(long qq, @NotNull String message) {
-            final MessageChain chain = new MessageChainBuilder()
-                    .append(new At(qq))
-                    .append(new PlainText(" "))
-                    .append(new PlainText(message))
-                    .build();
-
-
-            final boolean offer = messageSends.offer(() -> group.sendMessage(chain));
-
-            if (!offer) group.sendMessage(chain);
-
-        }
-
-        @Override
-        public void setMute(long qq, int seconds) throws Exception {
-            final NormalMember normalMember = group.get(qq);
-            if (normalMember == null) throw new Exception("QQ%d不在群里！".formatted(qq));
-            try {
-                normalMember.mute(seconds);
-            } catch (RuntimeException e) {
-                throw new Exception(e);
-            }
-        }
-
-        @Override
-        public @NotNull List<GroupMember> getAllMembers() {
-            final LinkedList<GroupMember> list = new LinkedList<>();
-            for (final NormalMember member : group.getMembers()) {
-                list.add(new GroupMemberImpl(member));
-            }
-            return list;
-        }
-    }
-
-    static class GroupMemberImpl implements GroupMember {
-
-        private final @NotNull NormalMember member;
-
-        GroupMemberImpl(@NotNull NormalMember member) {
-            this.member = member;
-        }
-
-        @Override
-        public long getQq() {
-            return this.member.getId();
-        }
-
-        @Override
-        public String getNick() {
-            return this.member.getNick();
-        }
-
-        @Override
-        public int getJoinTime() {
-            return this.member.getJoinTimestamp();
-        }
-
-        @Override
-        public int getActiveLevel() {
-            return this.member.getActive().getTemperature();
-        }
-
-        @Override
-        public String getSpecialTitle() {
-            return this.member.getSpecialTitle();
-        }
-
-        @Override
-        public int getPermissionLevel() {
-            return this.member.getPermission().getLevel();
-        }
-
-        @Override
-        public int getQLevel() {
-            return this.member.queryProfile().getQLevel();
-        }
-
-        @Override
-        public void kick(String message) throws Exception {
-            try {
-                this.member.kick(message);
-            } catch (RuntimeException e) {
-                throw new Exception(e);
-            }
-        }
-    }
 }

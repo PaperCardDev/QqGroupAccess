@@ -21,10 +21,10 @@ import java.util.List;
 
 class MainCommand extends TheMcCommand.HasSub {
 
-    private final @NotNull QqGroupAccess plugin;
+    private final @NotNull ThePlugin plugin;
     private final @NotNull Permission permission;
 
-    public MainCommand(@NotNull QqGroupAccess plugin) {
+    public MainCommand(@NotNull ThePlugin plugin) {
         super("qq-group-access");
         this.plugin = plugin;
 
