@@ -21,6 +21,8 @@ public interface QqGroupAccessApi {
 
         int getPermissionLevel(); // 权限等级
 
+        int getQLevel(); // QQ等级
+
         void kick(String message) throws Exception;
     }
 

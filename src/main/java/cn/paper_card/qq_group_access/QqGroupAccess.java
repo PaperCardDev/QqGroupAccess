@@ -2,11 +2,12 @@ package cn.paper_card.qq_group_access;
 
 import cn.paper_card.accept_player_manuals.AcceptPlayerManualsApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
-import cn.paper_card.little_skin_login.LittleSkinLoginApi;
-import cn.paper_card.paper_card_auth.PaperCardAuthApi;
-import cn.paper_card.player_qq_bind.QqBindApi;
+import cn.paper_card.little_skin_login.api.LittleSkinLoginApi;
+import cn.paper_card.paper_card_auth.api.PaperCardAuthApi;
 import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
 import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
+import cn.paper_card.qq_bind.api.BindInfo;
+import cn.paper_card.qq_bind.api.QqBindApi;
 import com.github.Anon8281.universalScheduler.UniversalScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.schedulers.TaskScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.tasks.MyScheduledTask;
@@ -47,6 +48,8 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private LittleSkinLoginApi littleSkinLoginApi = null;
 
+    private PaperCardAuthApi paperCardAuthApi = null;
+
     private PlayerQqGroupRemarkApi playerQqGroupRemarkApi = null;
 
     private PlayerQqInGroupApi playerQqInGroupApi = null;
@@ -55,7 +58,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private AcceptPlayerManualsApi acceptPlayerManualsApi = null;
 
-    private PaperCardAuthApi paperCardAuthApi = null;
 
     private final @NotNull Object lock = new Object();
 
@@ -85,24 +87,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.leaveTimes = new HashMap<>();
     }
 
-
-    private void getQqBindApi() {
-        if (this.qqBindApi == null) {
-            final Plugin plugin = this.getServer().getPluginManager().getPlugin("PlayerQqBind");
-            if (plugin instanceof final QqBindApi api) {
-                this.qqBindApi = api;
-            }
-        }
-    }
-
-    private void getLittleSkinLoginApi() {
-        if (this.littleSkinLoginApi == null) {
-            final Plugin plugin = this.getServer().getPluginManager().getPlugin("LittleSkinLogin");
-            if (plugin instanceof final LittleSkinLoginApi api) {
-                this.littleSkinLoginApi = api;
-            }
-        }
-    }
 
     private void getPlayerQqGroupRemarkApi() {
         if (this.playerQqGroupRemarkApi == null) {
@@ -137,15 +121,6 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             final Plugin plugin = this.getServer().getPluginManager().getPlugin("AcceptPlayerManuals");
             if (plugin instanceof final AcceptPlayerManualsApi api) {
                 this.acceptPlayerManualsApi = api;
-            }
-        }
-    }
-
-    private void getPaperCardAuthApi() {
-        if (this.paperCardAuthApi == null) {
-            final Plugin plugin = this.getServer().getPluginManager().getPlugin("PaperCardAuth");
-            if (plugin instanceof final PaperCardAuthApi api) {
-                this.paperCardAuthApi = api;
             }
         }
     }
@@ -290,18 +265,20 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
     private void onMainGroupAtMessage(@NotNull At at, @NotNull Member member, @NotNull String name) {
         final long target = at.getTarget();
 
-        if (this.qqBindApi == null) return;
+        final QqBindApi api = this.qqBindApi;
 
-        final QqBindApi.BindInfo bindInfo;
+        if (api == null) return;
+
+        final BindInfo bindInfo;
 
         try {
-            bindInfo = this.qqBindApi.queryByQq(target);
+            bindInfo = api.getBindService().queryByQq(target);
         } catch (Exception e) {
-            e.printStackTrace();
+            getSLF4JLogger().error("qq bind service -> query by qq", e);
             return;
         }
 
-        if (bindInfo == null || bindInfo.uuid() == null) return;
+        if (bindInfo == null) return;
 
         final Player player = getServer().getPlayer(bindInfo.uuid());
 
@@ -322,20 +299,22 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
     private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull MessageChain messageChain) {
 
-        if (this.qqBindApi == null) return;
+        final QqBindApi api = this.qqBindApi;
+
+        if (api == null) return;
 
         // 转发到游戏内
 
-        final QqBindApi.BindInfo bindInfo;
+        final BindInfo bindInfo;
         try {
-            bindInfo = this.qqBindApi.queryByQq(member.getId());
+            bindInfo = api.getBindService().queryByQq(member.getId());
         } catch (Exception e) {
-            e.printStackTrace();
+            this.getSLF4JLogger().error("qq bind service -> query by qq", e);
             return;
         }
 
         // QQ没有被绑定
-        if (bindInfo == null || bindInfo.uuid() == null) return;
+        if (bindInfo == null) return;
 
         final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
 
@@ -408,7 +387,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         if (strings == null) return;
 
         for (final String reply : strings) {
-            if (reply == null || reply.length() == 0) continue;
+            if (reply == null || reply.isEmpty()) continue;
 
             final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
                     .append(new QuoteReply(chain))
@@ -455,19 +434,16 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
         // LittleSkin绑定验证码相关
         if (this.littleSkinLoginApi != null) {
-            final @Nullable String[] reply = this.littleSkinLoginApi.onMainGroupMessage(messageStr, sender.getId());
+            final @Nullable String reply = this.littleSkinLoginApi.onMainGroupMessage(messageStr, sender.getId());
             if (reply != null) {
-                for (final String s : reply) {
-                    if (s == null) continue;
+                final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
+                        .append(new QuoteReply(event.getMessage()))
+                        .append(new At(sender.getId()))
+                        .append(new PlainText(" "))
+                        .append(new PlainText(reply))
+                        .build());
 
-                    final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
-                            .append(new QuoteReply(event.getMessage()))
-                            .append(new At(sender.getId()))
-                            .append(new PlainText(" "))
-                            .append(new PlainText(s))
-                            .build());
-                    if (!messageSends.offer(runnable)) runnable.run();
-                }
+                if (!messageSends.offer(runnable)) runnable.run();
             }
         }
 
@@ -520,11 +496,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         final MessageChain message = event.getMessage();
 
 
-        // 包含At
-        for (SingleMessage singleMessage1 : message) {
-            if (!(singleMessage1 instanceof final At at)) continue;
-            if (at.getTarget() != event.getBot().getId()) continue;
+        // 包含关键字
+        final String key = "已三连";
+        final String contentToString = message.contentToString();
 
+        if (contentToString.startsWith(key)) {
             final boolean removed;
             synchronized (this.auditSendImageQq) {
                 removed = this.auditSendImageQq.remove(event.getSender().getId());
@@ -549,28 +525,23 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 if (!messageSends.offer(runnable)) runnable.run();
 
             } else {
-
                 final Runnable runnable = () ->
                         group.sendMessage(new MessageChainBuilder()
                                 .append(new QuoteReply(message))
                                 .append(new At(event.getSender().getId()))
-                                .append(" 先发送三连截图到群里，再@我噢~")
+                                .append(" 先发送三连截图到群里，再发消息“%s”，注意一下【先后顺序】噢".formatted(key))
                                 .build());
 
                 if (!messageSends.offer(runnable)) runnable.run();
             }
-
-            return;
         }
 
         if (message.size() < 2) return;
-
         final SingleMessage singleMessage = message.get(1);
 
         if (singleMessage instanceof final Image image) {
             // 发送一张图片
             final ImageType imageType = image.getImageType();
-            getLogger().info("DEBUG: ImageType: %s".formatted(imageType.name()));
 
             synchronized (this.auditSendImageQq) {
                 this.auditSendImageQq.add(event.getSender().getId());
@@ -617,41 +588,33 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             if (this.qqBindApi == null) {
                 name = "无法访问QQ绑定API！";
             } else {
-                final QqBindApi.BindInfo bindInfo;
+                final BindInfo bindInfo;
                 try {
-                    bindInfo = this.qqBindApi.queryByQq(qq);
+                    bindInfo = this.qqBindApi.getBindService().queryByQq(qq);
 
                     if (bindInfo != null && bindInfo.uuid() != null) {
                         final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
-
-                        player = offlinePlayer.getPlayer();
 
                         name = offlinePlayer.getName();
                         if (name == null) name = offlinePlayer.getUniqueId().toString();
 
                     } else {
-                        name = "未绑定";
+                        name = "未绑定QQ";
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    this.getSLF4JLogger().error("qq bind service -> query by qq", e);
                     name = e.toString();
                 }
             }
-
-            // 从游戏里踢出玩家
-            final boolean kicked;
-            if (player != null && player.isOnline()) {
-                player.kick(Component.text("你已离开主群！").color(NamedTextColor.RED));
-                kicked = true;
-            } else kicked = false;
 
             final String name1 = name;
 
             final Runnable runnable = () -> {
                 final long id = member.getId();
 
-                group.sendMessage("%s (%d) 离开了群聊，撤销白名单\n游戏名：%s%s".formatted(member.getNick(), member.getId(),
-                        name1, kicked ? "\n已从游戏中踢出" : ""));
+                group.sendMessage("%s (%d) 离开了群聊\n游戏名：%s".formatted(member.getNick(), member.getId(),
+                        name1));
+
             };
 
             if (!messageSends.offer(runnable)) runnable.run();
@@ -661,18 +624,54 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
                 this.leaveTimes.put(qq, System.currentTimeMillis());
             }
         });
+
+        GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.Kick.class, event -> {
+            if (event.getBot().getId() != this.getBotId()) return;
+
+            if (event.getGroupId() != this.getMainGroupId()) return;
+
+            final NormalMember member = event.getMember();
+            final NormalMember operator = event.getOperator();
+
+            final String opName;
+            final String opId;
+
+            if (operator != null) {
+                String n = operator.getNameCard();
+                if (n.isEmpty()) n = operator.getNick();
+
+                opName = n;
+                opId = "%d".formatted(operator.getId());
+            } else {
+                opName = "null";
+                opId = "null";
+            }
+
+            final Runnable runnable1 = () -> {
+                String name = member.getNameCard();
+                if (name.isEmpty()) name = member.getNick();
+
+                final long id = member.getId();
+
+                event.getGroup().sendMessage("%s(%d) 被 %s(%s) 踢出了群聊".formatted(
+                        name, id, opName, opId
+                ));
+            };
+
+            if (!messageSends.offer(runnable1)) runnable1.run();
+        });
     }
 
     private boolean checkPlayerJoinGroup(long qq, MemberJoinEvent event, int qLevel) {
         if (this.qqBindApi == null) return false;
 
         // 看看是否老玩家入群
-        final QqBindApi.BindInfo bindInfo;
+        final BindInfo bindInfo;
 
         try {
-            bindInfo = this.qqBindApi.queryByQq(qq);
+            bindInfo = this.qqBindApi.getBindService().queryByQq(qq);
         } catch (Exception e) {
-            e.printStackTrace();
+            this.getSLF4JLogger().error("qq bind service -> query by qq", e);
             final Runnable runnable = () -> event.getGroup().sendMessage(e.toString());
             if (!messageSends.offer(runnable)) runnable.run();
             return false;
@@ -719,24 +718,9 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
 
                 final Runnable runnable = () -> {
                     final String msg = """
-                            \n欢迎来到PaperCard服务器审核群~
-                            -
-                            你只需要完成以下一件事情就可以游玩本服务器：
-                            给我们的【宣传视频】三连支持，并发送【三连截图】到本群中，然后@我就可以啦
-                            -
-                            PS: 作为一个公益服，宣传不易，您的三连就是对我们最大的支持~
-                            -
-                            了解服务器的更多信息，请查看游玩手册：https://docs.qq.com/doc/DV0VmWXVSVVBadWVW
-                            -
-                            当前B站宣传视频：https://www.bilibili.com/video/BV1wP41187Yd
-                            -
-                            目前服务器MC版本为：%s。
-                            -
-                            如果你没有自己的客户端的话，可下载QQ群文件里的整合包
-                            -
-                            在进入主群之前请勿退出审核群，否则就无法发送通知给你啦~
-                            -
-                            有其它疑问可以查看游玩手册、群公告或咨询管理员~""".formatted(getServer().getMinecraftVersion());
+                            \n欢迎来到PaperCard服务器审核群，
+                            主群进入方式在置顶群公告了噢~
+                            """;
 
                     final Group group = event.getGroup();
                     group.sendMessage(new MessageChainBuilder()
@@ -887,7 +871,7 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
             // 查询QQ绑定
             if (this.qqBindApi != null) {
                 try {
-                    final QqBindApi.BindInfo bindInfo = this.qqBindApi.queryByQq(fromId);
+                    final BindInfo bindInfo = this.qqBindApi.getBindService().queryByQq(fromId);
 
                     if (bindInfo != null && bindInfo.uuid() != null) {
 
@@ -1013,13 +997,21 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         this.saveConfig();
 
         // 获取其它插件接口
-        this.getQqBindApi();
-        this.getLittleSkinLoginApi();
+        this.qqBindApi = this.getServer().getServicesManager().load(QqBindApi.class);
+        this.littleSkinLoginApi = this.getServer().getServicesManager().load(LittleSkinLoginApi.class);
+        this.paperCardAuthApi = this.getServer().getServicesManager().load(PaperCardAuthApi.class);
+
+        // 设置QQ群号
+        if (this.qqBindApi != null) {
+            final long mainGroupId = this.getMainGroupId();
+            this.qqBindApi.setGroupId(mainGroupId);
+            this.getLogger().info("已连接QqBindApi并设置QQ群号：" + mainGroupId);
+        }
+
         this.getPlayerQqGroupRemarkApi();
         this.getPlayerQqInGroupApi();
         this.getGroupRootCommandApi();
         this.getAcceptPlayerManualsApi();
-        this.getPaperCardAuthApi();
 
         // 好友消息的处理
         this.onFriendMessage();
@@ -1280,6 +1272,11 @@ public final class QqGroupAccess extends JavaPlugin implements QqGroupAccessApi,
         @Override
         public int getPermissionLevel() {
             return this.member.getPermission().getLevel();
+        }
+
+        @Override
+        public int getQLevel() {
+            return this.member.queryProfile().getQLevel();
         }
 
         @Override
