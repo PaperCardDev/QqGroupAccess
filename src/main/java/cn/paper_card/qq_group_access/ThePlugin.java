@@ -1,6 +1,7 @@
 package cn.paper_card.qq_group_access;
 
 import cn.paper_card.accept_player_manuals.AcceptPlayerManualsApi;
+import cn.paper_card.bilibili_bind.api.BilibiliBindApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
 import cn.paper_card.little_skin_login.api.LittleSkinLoginApi;
 import cn.paper_card.paper_card_auth.api.PaperCardAuthApi;
@@ -48,6 +49,8 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
     private QqBindApi qqBindApi = null;
 
+    private BilibiliBindApi bilibiliBindApi = null;
+
     private LittleSkinLoginApi littleSkinLoginApi = null;
 
     private PaperCardAuthApi paperCardAuthApi = null;
@@ -82,8 +85,6 @@ public final class ThePlugin extends JavaPlugin implements Listener {
     private final @NotNull HashMap<Long, Long> leaveTimes;
 
     private MyScheduledTask myScheduledTask = null;
-
-    private QqGroupAccessImpl qqGroupAccess = null;
 
     public ThePlugin() {
         this.taskScheduler = UniversalScheduler.getScheduler(this);
@@ -466,6 +467,20 @@ public final class ThePlugin extends JavaPlugin implements Listener {
             }
         }
 
+        // bilibili
+        if (this.bilibiliBindApi != null) {
+            final String reply = this.bilibiliBindApi.onMainGroupMessage(messageStr, sender.getId());
+            if (reply != null) {
+                final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
+                        .append(new QuoteReply(event.getMessage()))
+                        .append(new At(sender.getId()))
+                        .append(new PlainText(" "))
+                        .append(new PlainText(reply))
+                        .build());
+                if (!messageSends.offer(runnable)) runnable.run();
+            }
+        }
+
         // 处理QQ群根命令
         final String commandLine = parseMessageForCommand(message);
 
@@ -691,15 +706,22 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         String name = offlinePlayer.getName();
         if (name == null) name = uuid.toString();
 
-        final String nameF = name;
-        final Runnable runnable = () -> {
+        final Runnable runnable = sendMessageOldPlayerJoin(event, qLevel, name);
 
+        if (!messageSends.offer(runnable)) runnable.run();
+
+        return true;
+    }
+
+    @NotNull
+    private static Runnable sendMessageOldPlayerJoin(MemberJoinEvent event, int qLevel, String name) {
+        return () -> {
             final String msg = """
                     \n欢迎回到PaperCard~
                     您的游戏名: %s
                     您的QQ等级: %d
                     请查看群公告【新人必看】（服务器地址在这里噢）
-                    祝您游戏愉快~""".formatted(nameF, qLevel);
+                    祝您游戏愉快~""".formatted(name, qLevel);
 
             final Group group = event.getGroup();
 
@@ -708,10 +730,6 @@ public final class ThePlugin extends JavaPlugin implements Listener {
                     .append(msg)
                     .build());
         };
-
-        if (!messageSends.offer(runnable)) runnable.run();
-
-        return true;
     }
 
     private void onMemberJoin() {
@@ -803,14 +821,14 @@ public final class ThePlugin extends JavaPlugin implements Listener {
                 try {
                     auditGroupAccess = createAuditGroupAccess();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    handleException(e);
                     return;
                 }
 
                 try {
                     auditGroupAccess.sendAtMessage(event.getMember().getId(), "恭喜你已经进入主群，现在可以退出审核群啦~");
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    handleException(e);
                 }
             }
         });
@@ -832,7 +850,7 @@ public final class ThePlugin extends JavaPlugin implements Listener {
             try {
                 mainGroupAccess.sendNormalMessage("QQ机器人登录成功，服务器已经启动啦~");
             } catch (Exception e) {
-                e.printStackTrace();
+                handleException(e);
             }
 
         });
@@ -926,7 +944,7 @@ public final class ThePlugin extends JavaPlugin implements Listener {
                     }
 
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    handleException(e);
                     final Runnable run = () -> group.sendMessage(e.toString());
                     if (!messageSends.offer(run)) run.run();
                 }
@@ -969,7 +987,7 @@ public final class ThePlugin extends JavaPlugin implements Listener {
                     return;
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                handleException(e);
                 final Runnable run = () -> group.sendMessage(e.toString());
                 if (!messageSends.offer(run)) run.run();
             }
@@ -991,10 +1009,10 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onLoad() {
-        this.qqGroupAccess = new QqGroupAccessImpl(this);
+        QqGroupAccessImpl qqGroupAccess = new QqGroupAccessImpl(this);
 
         this.getSLF4JLogger().info("注册%s...".formatted(PlayerQqInGroupApi.QqGroupAccess.class.getSimpleName()));
-        this.getServer().getServicesManager().register(QqGroupAccessApi.class, this.qqGroupAccess, this, ServicePriority.Highest);
+        this.getServer().getServicesManager().register(QqGroupAccessApi.class, qqGroupAccess, this, ServicePriority.Highest);
     }
 
     @Override
@@ -1020,6 +1038,9 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         this.qqBindApi = this.getServer().getServicesManager().load(QqBindApi.class);
         this.littleSkinLoginApi = this.getServer().getServicesManager().load(LittleSkinLoginApi.class);
         this.paperCardAuthApi = this.getServer().getServicesManager().load(PaperCardAuthApi.class);
+
+        this.bilibiliBindApi = this.getServer().getServicesManager().load(BilibiliBindApi.class);
+        if (this.bilibiliBindApi != null) getSLF4JLogger().info("已连接到" + BilibiliBindApi.class.getSimpleName());
 
         // 设置QQ群号
         if (this.qqBindApi != null) {
@@ -1180,7 +1201,7 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         try {
             mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), content));
         } catch (Exception e) {
-            e.printStackTrace();
+            handleException(e);
         }
     }
 
@@ -1191,5 +1212,7 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         return permission;
     }
 
-
+    void handleException(@NotNull Throwable e) {
+        getSLF4JLogger().error("", e);
+    }
 }

@@ -129,6 +129,13 @@
         </dependency>
 
         <dependency>
+            <groupId>com.github.PaperCardDev</groupId>
+            <artifactId>bilibili-bind-api</artifactId>
+            <version>1.1</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
             <groupId>cn.paper_card</groupId>
             <artifactId>PlayerQqGroupRemark</artifactId>
             <version>1.0</version>
