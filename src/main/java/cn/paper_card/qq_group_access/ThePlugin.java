@@ -2,6 +2,7 @@ package cn.paper_card.qq_group_access;
 
 import cn.paper_card.accept_player_manuals.AcceptPlayerManualsApi;
 import cn.paper_card.bilibili_bind.api.BilibiliBindApi;
+import cn.paper_card.chat_gpt.api.ChatGptApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
 import cn.paper_card.little_skin_login.api.LittleSkinLoginApi;
 import cn.paper_card.paper_card_auth.api.PaperCardAuthApi;
@@ -46,6 +47,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 @SuppressWarnings("unused")
 public final class ThePlugin extends JavaPlugin implements Listener {
+
+    private ChatGptApi chatGptApi = null;
 
     private QqBindApi qqBindApi = null;
 
@@ -576,6 +579,62 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
     private void onGroupMessage() {
         GlobalEventChannel.INSTANCE.subscribeAlways(GroupMessageEvent.class, event -> {
+
+            if (this.chatGptApi != null) {
+                final Group group = event.getGroup();
+                if (group.getId() == this.getMainGroupId()) { // 主群
+                    final MessageChain message = event.getMessage();
+                    // 检查是不是AT自己
+                    boolean atMe = false;
+                    final StringBuilder stringBuilder = new StringBuilder();
+                    for (SingleMessage singleMessage : message) {
+                        if (singleMessage instanceof At at) {
+                            if (at.getTarget() == event.getBot().getId()) {
+                                atMe = true;
+                            }
+                        } else if (singleMessage instanceof PlainText text) {
+                            stringBuilder.append(text.getContent());
+                        }
+                    }
+
+                    boolean reply;
+                    if (atMe) {
+                        reply = true;
+                    } else {
+                        reply = new Random().nextDouble() < 0.01;
+                    }
+
+                    final String messageStr = stringBuilder.toString();
+                    if (messageStr.isEmpty()) {
+                        reply = false;
+                    }
+
+                    if (reply) {
+                        final Runnable runnable = () -> {
+                            try {
+                                final String answer;
+                                getSLF4JLogger().info("request answer for: " + messageStr);
+                                answer = this.chatGptApi.requestAnswer(messageStr, event.getSender().getId());
+                                final MessageChainBuilder append = new MessageChainBuilder()
+                                        .append(new QuoteReply(message))
+                                        .append(new PlainText(answer));
+
+                                group.sendMessage(append.build());
+                            } catch (Exception e) {
+                                getSLF4JLogger().error("", e);
+                                group.sendMessage(new MessageChainBuilder()
+                                        .append(new QuoteReply(message))
+                                        .append(new PlainText(e.toString()))
+                                        .build());
+                            }
+                        };
+
+                        if (!messageSends.offer(runnable)) runnable.run();
+
+                    }
+                }
+            }
+
             final long botId = this.getBotId();
             if (event.getBot().getId() != botId) return;
 
@@ -1047,6 +1106,18 @@ public final class ThePlugin extends JavaPlugin implements Listener {
             final long mainGroupId = this.getMainGroupId();
             this.qqBindApi.setGroupId(mainGroupId);
             this.getLogger().info("已连接QqBindApi并设置QQ群号：" + mainGroupId);
+        }
+
+        try {
+            this.chatGptApi = this.getServer().getServicesManager().load(ChatGptApi.class);
+            if (this.chatGptApi == null) {
+                getSLF4JLogger().warn("无法连接到" + ChatGptApi.class.getSimpleName());
+            } else {
+                getSLF4JLogger().info("已连接到" + ChatGptApi.class.getSimpleName());
+            }
+        } catch (NoClassDefFoundError e) {
+            this.getSLF4JLogger().warn("无法连接到ChatGPT插件：" + e);
+            this.chatGptApi = null;
         }
 
         this.getPlayerQqGroupRemarkApi();
