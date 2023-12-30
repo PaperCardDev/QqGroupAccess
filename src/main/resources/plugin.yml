@@ -8,6 +8,9 @@ folia-supported: true
 depend:
   - PaperCardMirai
 
+softdepend:
+  - Sponsorship
+
 commands:
   qq-group-access:
     permission: qq-group-access.command

@@ -12,15 +12,12 @@ import cn.paper_card.qq_bind.api.BindInfo;
 import cn.paper_card.qq_bind.api.QqBindApi;
 import cn.paper_card.qq_group_access.api.GroupAccess;
 import cn.paper_card.qq_group_access.api.QqGroupAccessApi;
+import cn.paper_card.qq_group_chat_sync.api.QqGroupChatSyncApi;
+import cn.paper_card.sponsorship.api.QqGroupMessageSender;
+import cn.paper_card.sponsorship.api.SponsorshipApi2;
 import com.github.Anon8281.universalScheduler.UniversalScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.schedulers.TaskScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.tasks.MyScheduledTask;
-import io.papermc.paper.event.player.AsyncChatEvent;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
-import net.kyori.adventure.title.TitlePart;
 import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.Group;
 import net.mamoe.mirai.contact.Member;
@@ -28,12 +25,10 @@ import net.mamoe.mirai.contact.NormalMember;
 import net.mamoe.mirai.data.UserProfile;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
+import net.mamoe.mirai.message.MessageReceipt;
 import net.mamoe.mirai.message.data.*;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.PluginCommand;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
 import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.ServicePriority;
@@ -43,10 +38,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
-@SuppressWarnings("unused")
-public final class ThePlugin extends JavaPlugin implements Listener {
+public final class ThePlugin extends JavaPlugin {
 
     private ChatGptApi chatGptApi = null;
 
@@ -66,6 +61,7 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
     private AcceptPlayerManualsApi acceptPlayerManualsApi = null;
 
+    private QqGroupChatSyncApi qqGroupChatSyncApi = null;
 
     private final @NotNull Object lock = new Object();
 
@@ -78,12 +74,12 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
     private final static String PATH_AUDIT_GROUP_ID = "audit-group-id";
 
-    private final static String MESSAGE_PREFIX_SEND_TO_GROUP = "#";
-
     private final @NotNull HashSet<Long> auditSendImageQq = new HashSet<>();
     private final @NotNull HashSet<Long> passAuditQq = new HashSet<>();
 
     private final @NotNull BlockingQueue<Runnable> messageSends;
+
+    private final @NotNull ConcurrentHashMap<Integer, UUID> groupSyncMessages;
 
     private final @NotNull HashMap<Long, Long> leaveTimes;
 
@@ -93,6 +89,7 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         this.taskScheduler = UniversalScheduler.getScheduler(this);
         this.messageSends = new LinkedBlockingQueue<>();
         this.leaveTimes = new HashMap<>();
+        this.groupSyncMessages = new ConcurrentHashMap<>();
     }
 
 
@@ -270,81 +267,27 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         });
     }
 
-    private void onMainGroupAtMessage(@NotNull At at, @NotNull Member member, @NotNull String name) {
-        final long target = at.getTarget();
 
-        final QqBindApi api = this.qqBindApi;
-
-        if (api == null) return;
-
-        final BindInfo bindInfo;
-
-        try {
-            bindInfo = api.getBindService().queryByQq(target);
-        } catch (Exception e) {
-            getSLF4JLogger().error("qq bind service -> query by qq", e);
-            return;
-        }
-
-        if (bindInfo == null) return;
-
-        final Player player = getServer().getPlayer(bindInfo.uuid());
-
-        if (player == null) return;
-        if (!player.isOnline()) return;
-
-        this.taskScheduler.runTask(() -> {
-            player.sendTitlePart(TitlePart.TITLE, Component.text()
-                    .append(Component.text(name).color(NamedTextColor.DARK_AQUA).decorate(TextDecoration.BOLD))
-                    .append(Component.text(" 在群里@你").color(NamedTextColor.GOLD))
-                    .build());
-
-            player.sendTitlePart(TitlePart.SUBTITLE, Component.text("他可能找你有事").color(NamedTextColor.GREEN));
-        });
-
-    }
-
-
-    private void transportGroupMessage(@NotNull Group group, @NotNull Member member, @NotNull MessageChain messageChain) {
-
-        final QqBindApi api = this.qqBindApi;
-
-        if (api == null) return;
-
+    private void transportGroupMessage(@NotNull String senderName, long senderQq, @NotNull Group group, @NotNull MessageChain messageChain) {
         // 转发到游戏内
+        final QqGroupChatSyncApi api = this.qqGroupChatSyncApi;
 
-        final BindInfo bindInfo;
-        try {
-            bindInfo = api.getBindService().queryByQq(member.getId());
-        } catch (Exception e) {
-            this.getSLF4JLogger().error("qq bind service -> query by qq", e);
-            return;
-        }
-
-        // QQ没有被绑定
-        if (bindInfo == null) return;
-
-        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
-
-        // 获取游戏名
-        final String name = offlinePlayer.getName();
-
-        // 无法获取游戏名，应该是没进过服务器
-        if (name == null) return;
-
-        // 太久不上线了
-        final long current = System.currentTimeMillis();
-        if (current - offlinePlayer.getLastSeen() > 7 * 24 * 60 * 60 * 1000L) return;
+        if (api == null) return;
 
         final StringBuilder builder = new StringBuilder();
+
+        final LinkedList<At> ats = new LinkedList<>();
+        final LinkedList<AtAll> atAllList = new LinkedList<>();
+        final LinkedList<QuoteReply> quoteReplies = new LinkedList<>();
 
         for (final SingleMessage singleMessage : messageChain) {
             if (singleMessage instanceof final At at) { // AT某人
                 final String display = at.getDisplay(group);
                 builder.append(display);
-                this.onMainGroupAtMessage(at, member, name);
+                ats.add(at);
             } else if (singleMessage instanceof final AtAll atAll) { // AT全体
                 builder.append(atAll.contentToString());
+                atAllList.add(atAll);
             } else if (singleMessage instanceof final PlainText plainText) { // 纯文本
                 builder.append(plainText.getContent());
             } else if (singleMessage instanceof final Image image) { // 图片
@@ -353,20 +296,72 @@ public final class ThePlugin extends JavaPlugin implements Listener {
                 builder.append(face.contentToString());
             } else if (singleMessage instanceof final VipFace vipFace) { // VIP表情
                 builder.append(vipFace.contentToString());
+            } else if (singleMessage instanceof QuoteReply quoteReply) {
+                quoteReplies.add(quoteReply);
+            }
+
+        }
+
+        final String content = builder.toString();
+
+        //
+        {
+            final String reply = api.onGroupMessage(senderQq, senderName, builder.toString());
+            if (reply != null) {
+                final Runnable run = () -> group.sendMessage(reply);
+                if (!messageSends.offer(run)) run.run();
             }
         }
 
-        final String string = builder.toString();
+        // 处理AT
+        for (final At at : ats) {
+            final String reply = api.onAtMessage(senderQq, senderName, at.getTarget(), content);
+            if (reply != null) {
+                final Runnable run = () -> group.sendMessage(reply);
+                if (!messageSends.offer(run)) run.run();
+            }
+        }
 
-        if (string.isEmpty()) return;
+        // 处理AT全体
+        for (AtAll ignored : atAllList) {
+            final String reply = api.onAtAllMessage(senderQq, senderName, content);
+            if (reply != null) {
+                final Runnable run = () -> group.sendMessage(reply);
+                if (!messageSends.offer(run)) run.run();
+            }
+        }
 
-        this.taskScheduler.runTask(() -> getServer().broadcast(Component.text()
-                .append(Component.text("<").color(NamedTextColor.GOLD))
-                .append(Component.text(name))
-                .append(Component.text("> ").color(NamedTextColor.GOLD))
-                .append(Component.text(string))
-                .build()));
+        // 处理引用回复
+        for (QuoteReply quoteReply : quoteReplies) {
+            final MessageSource source = quoteReply.getSource();
+//                final long targetId = source.getTargetId(); // 群号
+            final long botId = source.getBotId();
+            final long fromId = source.getFromId();
 
+            if (fromId == botId) { // 回复了机器人的消息
+
+                // 判断是否回复机器人的游戏同步消息
+                final int[] ids = source.getIds();
+                if (ids.length == 1) {
+                    final int id = ids[0];
+
+                    final UUID uuid = groupSyncMessages.get(id);
+                    if (uuid != null) {
+//                        getSLF4JLogger().info("DEBUG: 回复的是机器人的同步消息");
+                        final String reply = api.onReplySyncMessage(senderQq, senderName, uuid, content);
+                        if (reply != null) {
+                            final Runnable run = () -> group.sendMessage(reply);
+                            if (!messageSends.offer(run)) run.run();
+                        }
+                    } else {
+                        getSLF4JLogger().info("DEBUG: 回复的是机器人的非同步消息");
+                    }
+
+                } else {
+                    getSLF4JLogger().warn("ids.length: %d".formatted(ids.length));
+                }
+            }
+        }
     }
 
     private @NotNull String parseMessageForCommand(@NotNull MessageChain chain) {
@@ -417,12 +412,16 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
         final MessageChain message = event.getMessage();
 
-
         if (this.playerQqGroupRemarkApi != null) {
             this.playerQqGroupRemarkApi.updateRemarkByGroupMessage(sender.getId(), sender.getNameCard());
         }
 
-        this.transportGroupMessage(group, sender, message);
+        final String senderName = event.getSenderName();
+        final long senderQq = sender.getId();
+
+        // QQ群消息 -> 游戏内
+        this.transportGroupMessage(senderName, senderQq, group, message);
+
 
         // QQ绑定验证码相关
         if (this.qqBindApi != null) {
@@ -565,6 +564,8 @@ public final class ThePlugin extends JavaPlugin implements Listener {
             // 发送一张图片
             final ImageType imageType = image.getImageType();
 
+            getSLF4JLogger().info("ImageType: " + imageType.name());
+
             synchronized (this.auditSendImageQq) {
                 this.auditSendImageQq.add(event.getSender().getId());
             }
@@ -661,7 +662,6 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
 
             String name; // 游戏名
-            Player player = null;
 
             if (this.qqBindApi == null) {
                 name = "无法访问QQ绑定API！";
@@ -687,13 +687,8 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
             final String name1 = name;
 
-            final Runnable runnable = () -> {
-                final long id = member.getId();
-
-                group.sendMessage("%s (%d) 离开了群聊\n游戏名：%s".formatted(member.getNick(), member.getId(),
-                        name1));
-
-            };
+            final Runnable runnable = () -> group.sendMessage("%s (%d) 离开了群聊\n游戏名：%s".formatted(member.getNick(), member.getId(),
+                    name1));
 
             if (!messageSends.offer(runnable)) runnable.run();
 
@@ -1074,10 +1069,29 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         this.getServer().getServicesManager().register(QqGroupAccessApi.class, qqGroupAccess, this, ServicePriority.Highest);
     }
 
+    @NotNull Group getMainGroup() throws Exception {
+        final long botId = getBotId();
+        if (botId <= 0) throw new Exception("未配置QQ机器人ID");
+
+        final long mainGroupId = getMainGroupId();
+        if (mainGroupId <= 0) throw new Exception("未配置QQ主群ID！");
+
+        final Bot instance = Bot.findInstance(botId);
+        if (instance == null) throw new Exception("找不到QQ机器人：%d".formatted(botId));
+
+        if (!instance.isOnline()) throw new Exception("QQ机器人[%d]不在线！".formatted(botId));
+
+        final Group group = instance.getGroup(mainGroupId);
+
+        if (group == null)
+            throw new Exception("QQ机器人[%d]无法访问QQ群[%d]".formatted(botId, mainGroupId));
+
+        return group;
+    }
+
+
     @Override
     public void onEnable() {
-
-        this.getServer().getPluginManager().registerEvents(this, this);
 
         // 注册命令
         final PluginCommand command = this.getCommand("qq-group-access");
@@ -1100,6 +1114,76 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
         this.bilibiliBindApi = this.getServer().getServicesManager().load(BilibiliBindApi.class);
         if (this.bilibiliBindApi != null) getSLF4JLogger().info("已连接到" + BilibiliBindApi.class.getSimpleName());
+
+        this.qqGroupChatSyncApi = this.getServer().getServicesManager().load(QqGroupChatSyncApi.class);
+        if (this.qqGroupChatSyncApi != null) {
+            getSLF4JLogger().info("已连接到" + QqGroupChatSyncApi.class.getSimpleName());
+
+            this.qqGroupChatSyncApi.setMessageSender((uuid, name, content) -> {
+
+                final Runnable runnable = () -> {
+                    final Group mainGroup;
+
+                    try {
+                        mainGroup = getMainGroup();
+                    } catch (Exception e) {
+                        handleException(e);
+                        return;
+                    }
+
+                    final MessageReceipt<Group> receipt = mainGroup.sendMessage(new PlainText(content));
+
+
+                    final OnlineMessageSource.Outgoing source = receipt.getSource();
+
+                    final int[] ids = source.getIds();
+
+                    if (ids.length == 1) {
+                        final int id = ids[0];
+                        // 记录下来
+                        groupSyncMessages.put(id, uuid);
+                    } else {
+                        getSLF4JLogger().warn("ids.length: %d".formatted(ids.length));
+                    }
+                };
+
+                if (!messageSends.offer(runnable)) runnable.run();
+
+            });
+        }
+
+        SponsorshipApi2 sponsorshipApi = this.getServer().getServicesManager().load(SponsorshipApi2.class);
+        if (sponsorshipApi != null) {
+            getSLF4JLogger().info("已连接到" + SponsorshipApi2.class.getSimpleName());
+            sponsorshipApi.setQqGroupMessageSender(new QqGroupMessageSender() {
+
+                @Override
+                public void sendNormal(@NotNull String s) throws Exception {
+
+                    final Group group = getMainGroup();
+
+                    final Runnable run = () -> group.sendMessage(s);
+
+                    if (!messageSends.offer(run)) run.run();
+                }
+
+                @Override
+                public void sendAt(@Nullable String s, long l, @Nullable String s1) throws Exception {
+                    final Group group = getMainGroup();
+
+                    final Runnable run = () -> {
+                        final MessageChainBuilder builder = new MessageChainBuilder();
+                        if (s != null) builder.append(s);
+                        builder.append(new At(l));
+                        if (s1 != null) builder.append(s1);
+
+                        group.sendMessage(builder.build());
+                    };
+
+                    if (!messageSends.offer(run)) run.run();
+                }
+            });
+        }
 
         // 设置QQ群号
         if (this.qqBindApi != null) {
@@ -1171,6 +1255,8 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
         }
 
+        // 事件监听
+        new OnQuit(this);
     }
 
     @Override
@@ -1248,34 +1334,6 @@ public final class ThePlugin extends JavaPlugin implements Listener {
         }
     }
 
-    @EventHandler
-    public void onChat(@NotNull AsyncChatEvent event) {
-        final Component message = event.message();
-        if (!(message instanceof final TextComponent textComponent)) return;
-
-        final String content = textComponent.content();
-
-        if (!content.startsWith(MESSAGE_PREFIX_SEND_TO_GROUP)) return;
-
-        if (this.getBotId() == 0) return;
-        if (this.getMainGroupId() == 0) return;
-
-
-        final GroupAccess mainGroupAccess;
-        try {
-            mainGroupAccess = createMainGroupAccess();
-        } catch (Exception e) {
-            getLogger().warning(e.toString());
-            return;
-        }
-
-        try {
-            mainGroupAccess.sendNormalMessage("<%s> %s".formatted(event.getPlayer().getName(), content));
-        } catch (Exception e) {
-            handleException(e);
-        }
-    }
-
     @NotNull
     Permission addPermission(@NotNull String name) {
         final Permission permission = new Permission(name);
@@ -1285,5 +1343,9 @@ public final class ThePlugin extends JavaPlugin implements Listener {
 
     void handleException(@NotNull Throwable e) {
         getSLF4JLogger().error("", e);
+    }
+
+    @NotNull ConcurrentHashMap<Integer, UUID> getGroupSyncMessages() {
+        return this.groupSyncMessages;
     }
 }

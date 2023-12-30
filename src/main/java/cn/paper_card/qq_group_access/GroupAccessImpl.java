@@ -66,6 +66,25 @@ class GroupAccessImpl implements GroupAccess {
     }
 
     @Override
+    public void sendAtMessage(@NotNull List<Long> qqs, @NotNull String message) {
+
+        final MessageChainBuilder builder = new MessageChainBuilder();
+
+        for (Long qq : qqs) {
+            builder.append(new At(qq));
+            builder.append(" ");
+        }
+
+        builder.append(new PlainText(message));
+
+        final MessageChain build = builder.build();
+
+        final boolean offer = messageSends.offer(() -> group.sendMessage(build));
+
+        if (!offer) group.sendMessage(build);
+    }
+
+    @Override
     public void setMute(long qq, int seconds) throws Exception {
         final NormalMember normalMember = group.get(qq);
         if (normalMember == null) throw new Exception("QQ%d不在群里！".formatted(qq));
