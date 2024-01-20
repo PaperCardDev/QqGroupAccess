@@ -6,6 +6,8 @@ import cn.paper_card.chat_gpt.api.ChatGptApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
 import cn.paper_card.little_skin_login.api.LittleSkinLoginApi;
 import cn.paper_card.paper_card_auth.api.PaperCardAuthApi;
+import cn.paper_card.player_last_quit.api.PlayerLastQuitApi2;
+import cn.paper_card.player_last_quit.api.QuitInfo;
 import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
 import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
 import cn.paper_card.qq_bind.api.BindInfo;
@@ -62,6 +64,8 @@ public final class ThePlugin extends JavaPlugin {
     private AcceptPlayerManualsApi acceptPlayerManualsApi = null;
 
     private QqGroupChatSyncApi qqGroupChatSyncApi = null;
+
+    private PlayerLastQuitApi2 playerLastQuitApi = null;
 
     private final @NotNull Object lock = new Object();
 
@@ -888,6 +892,53 @@ public final class ThePlugin extends JavaPlugin {
         });
     }
 
+    private void notifyLastQuitByQqGroup(@NotNull GroupAccess mainGroup, long cur) {
+        final PlayerLastQuitApi2 playerLastQuitApi1 = this.playerLastQuitApi;
+        final QqBindApi qqBindApi1 = this.qqBindApi;
+
+        if (playerLastQuitApi1 == null || qqBindApi1 == null) {
+            try {
+                mainGroup.sendNormalMessage("QQ机器人登录成功，服务器已经启动啦~");
+            } catch (Exception e) {
+                getSLF4JLogger().error("", e);
+            }
+            return;
+        }
+
+        final List<QuitInfo> list;
+        try {
+            list = playerLastQuitApi1.queryTimeAfter(cur - 5 * 60 * 1000L);
+        } catch (Exception e) {
+            getSLF4JLogger().error("", e);
+            return;
+        }
+
+        final LinkedList<Long> qqs = new LinkedList<>();
+
+        // 获取玩家的QQ号
+        for (QuitInfo quitInfo : list) {
+            // 查询QQ绑定
+            final BindInfo qqBind;
+
+            try {
+                qqBind = qqBindApi1.getBindService().queryByUuid(quitInfo.uuid());
+            } catch (Exception e) {
+                this.getSLF4JLogger().error("", e);
+                continue;
+            }
+
+            if (qqBind == null) continue;
+
+            qqs.add(qqBind.qq());
+        }
+
+        try {
+            mainGroup.sendAtMessage(qqs, "\n服务器已经启动啦~");
+        } catch (Exception e) {
+            getSLF4JLogger().error("", e);
+        }
+    }
+
     private void onBotLogin() {
 
         GlobalEventChannel.INSTANCE.subscribeAlways(BotOnlineEvent.class, event -> {
@@ -901,12 +952,11 @@ public final class ThePlugin extends JavaPlugin {
                 return;
             }
 
-            try {
-                mainGroupAccess.sendNormalMessage("QQ机器人登录成功，服务器已经启动啦~");
-            } catch (Exception e) {
-                handleException(e);
-            }
+            this.notifyLastQuitByQqGroup(mainGroupAccess, System.currentTimeMillis());
 
+            // 通知玩家上线
+            final int currentTick = this.getServer().getCurrentTick();
+            getSLF4JLogger().warn("debug: currentTick: " + currentTick);
         });
     }
 
@@ -1111,6 +1161,7 @@ public final class ThePlugin extends JavaPlugin {
         this.qqBindApi = this.getServer().getServicesManager().load(QqBindApi.class);
         this.littleSkinLoginApi = this.getServer().getServicesManager().load(LittleSkinLoginApi.class);
         this.paperCardAuthApi = this.getServer().getServicesManager().load(PaperCardAuthApi.class);
+        this.playerLastQuitApi = this.getServer().getServicesManager().load(PlayerLastQuitApi2.class);
 
         this.bilibiliBindApi = this.getServer().getServicesManager().load(BilibiliBindApi.class);
         if (this.bilibiliBindApi != null) getSLF4JLogger().info("已连接到" + BilibiliBindApi.class.getSimpleName());
