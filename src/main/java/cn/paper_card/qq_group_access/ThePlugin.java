@@ -33,6 +33,7 @@ import net.mamoe.mirai.message.MessageReceipt;
 import net.mamoe.mirai.message.data.*;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
 import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.ServicePriority;
@@ -923,6 +924,10 @@ public final class ThePlugin extends JavaPlugin {
         // 获取玩家的QQ号
         for (QuitInfo quitInfo : list) {
             
+            // 已经在线了
+            final Player player = getServer().getPlayer(quitInfo.uuid());
+            if (player != null && player.isOnline()) continue;
+
             // 查询QQ绑定
             final BindInfo qqBind;
 
