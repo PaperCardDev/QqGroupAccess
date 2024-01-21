@@ -15,6 +15,8 @@ import cn.paper_card.qq_bind.api.QqBindApi;
 import cn.paper_card.qq_group_access.api.GroupAccess;
 import cn.paper_card.qq_group_access.api.QqGroupAccessApi;
 import cn.paper_card.qq_group_chat_sync.api.QqGroupChatSyncApi;
+import cn.paper_card.smurf.api.SmurfApi;
+import cn.paper_card.smurf.api.SmurfInfo;
 import cn.paper_card.sponsorship.api.QqGroupMessageSender;
 import cn.paper_card.sponsorship.api.SponsorshipApi2;
 import com.github.Anon8281.universalScheduler.UniversalScheduler;
@@ -66,6 +68,8 @@ public final class ThePlugin extends JavaPlugin {
     private QqGroupChatSyncApi qqGroupChatSyncApi = null;
 
     private PlayerLastQuitApi2 playerLastQuitApi = null;
+
+    private SmurfApi smurfApi = null;
 
     private final @NotNull Object lock = new Object();
 
@@ -895,6 +899,7 @@ public final class ThePlugin extends JavaPlugin {
     private void notifyLastQuitByQqGroup(@NotNull GroupAccess mainGroup, long cur) {
         final PlayerLastQuitApi2 playerLastQuitApi1 = this.playerLastQuitApi;
         final QqBindApi qqBindApi1 = this.qqBindApi;
+        final SmurfApi smurfApi1 = this.smurfApi;
 
         if (playerLastQuitApi1 == null || qqBindApi1 == null) {
             try {
@@ -913,10 +918,11 @@ public final class ThePlugin extends JavaPlugin {
             return;
         }
 
-        final LinkedList<Long> qqs = new LinkedList<>();
+        final HashSet<Long> qqs = new HashSet<>();
 
         // 获取玩家的QQ号
         for (QuitInfo quitInfo : list) {
+            
             // 查询QQ绑定
             final BindInfo qqBind;
 
@@ -927,13 +933,23 @@ public final class ThePlugin extends JavaPlugin {
                 continue;
             }
 
-            if (qqBind == null) continue;
+            if (qqBind != null) qqs.add(qqBind.qq());
 
-            qqs.add(qqBind.qq());
+            if (smurfApi1 != null) {
+                try {
+                    final SmurfInfo smurfInfo = smurfApi1.getSmurfService().queryBySmurfUuid(quitInfo.uuid());
+                    if (smurfInfo != null) {
+                        final BindInfo b = qqBindApi1.getBindService().queryByUuid(smurfInfo.mainUuid());
+                        if (b != null) qqs.add(b.qq());
+                    }
+                } catch (Exception e) {
+                    getSLF4JLogger().error("", e);
+                }
+            }
         }
 
         try {
-            mainGroup.sendAtMessage(qqs, "\n服务器已经启动啦~");
+            mainGroup.sendAtMessage(qqs.stream().toList(), "\n\n服务器已经启动啦~");
         } catch (Exception e) {
             getSLF4JLogger().error("", e);
         }
@@ -952,11 +968,9 @@ public final class ThePlugin extends JavaPlugin {
                 return;
             }
 
+            // 通知玩家上线
             this.notifyLastQuitByQqGroup(mainGroupAccess, System.currentTimeMillis());
 
-            // 通知玩家上线
-            final int currentTick = this.getServer().getCurrentTick();
-            getSLF4JLogger().warn("debug: currentTick: " + currentTick);
         });
     }
 
@@ -1162,6 +1176,7 @@ public final class ThePlugin extends JavaPlugin {
         this.littleSkinLoginApi = this.getServer().getServicesManager().load(LittleSkinLoginApi.class);
         this.paperCardAuthApi = this.getServer().getServicesManager().load(PaperCardAuthApi.class);
         this.playerLastQuitApi = this.getServer().getServicesManager().load(PlayerLastQuitApi2.class);
+        this.smurfApi = this.getServer().getServicesManager().load(SmurfApi.class);
 
         this.bilibiliBindApi = this.getServer().getServicesManager().load(BilibiliBindApi.class);
         if (this.bilibiliBindApi != null) getSLF4JLogger().info("已连接到" + BilibiliBindApi.class.getSimpleName());
