@@ -691,6 +691,14 @@ public final class ThePlugin extends JavaPlugin {
             if (this.playerQqInGroupApi != null)
                 this.playerQqInGroupApi.onMemberQuitGroup(qq);
 
+            if (this.qqGroupMemberInfoApi != null) {
+                final QqGroupMemberInfoService service = this.qqGroupMemberInfoApi.getQqGroupMemberInfoService();
+                try {
+                    service.updateInGroup(qq, false);
+                } catch (Exception e) {
+                    handleException(e);
+                }
+            }
 
             String name; // 游戏名
 
