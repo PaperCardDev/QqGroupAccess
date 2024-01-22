@@ -1,6 +1,9 @@
 package cn.paper_card.qq_group_access;
 
 import cn.paper_card.mc_command.TheMcCommand;
+import cn.paper_card.qq_group_member_info.api.QqGroupMemberInfo;
+import cn.paper_card.qq_group_member_info.api.QqGroupMemberInfoApi;
+import cn.paper_card.qq_group_member_info.api.QqGroupMemberInfoService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -38,15 +41,12 @@ class MainCommand extends TheMcCommand.HasSub {
         this.addSubCommand(new Group(false));
         this.addSubCommand(new Member());
         this.addSubCommand(new Reload());
+        this.addSubCommand(new Test());
     }
 
     @Override
     protected boolean canNotExecute(@NotNull CommandSender commandSender) {
         return !commandSender.hasPermission(this.permission);
-    }
-
-    private static void sendError(@NotNull CommandSender sender, @NotNull String error) {
-        sender.sendMessage(Component.text(error).color(NamedTextColor.DARK_RED));
     }
 
     class Reload extends TheMcCommand {
@@ -65,8 +65,14 @@ class MainCommand extends TheMcCommand.HasSub {
 
         @Override
         public boolean onCommand(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
-            plugin.reloadConfig();
-            commandSender.sendMessage(Component.text("已重载配置"));
+            plugin.getConfigManager().reload();
+
+            final TextComponent.Builder text = Component.text();
+            plugin.appendPrefix(text);
+            text.appendSpace();
+            text.append(Component.text("已重载配置").color(NamedTextColor.GREEN));
+            commandSender.sendMessage(text.build());
+
             return true;
         }
 
@@ -101,19 +107,24 @@ class MainCommand extends TheMcCommand.HasSub {
 
             if (argId == null) {
                 if (!commandSender.hasPermission(this.permGet)) {
-                    sendError(commandSender, "你没有权限查看QQ机器人ID！");
+                    plugin.sendError(commandSender, "你没有权限查看QQ机器人ID！");
                     return true;
                 }
 
-                final long botId = plugin.getBotId();
+                final long botId = plugin.getConfigManager().getBotId();
 
-                commandSender.sendMessage(Component.text("当前所使用的QQ机器人为: %d".formatted(botId)));
+                final TextComponent.Builder text = Component.text();
+                plugin.appendPrefix(text);
+                text.appendSpace();
+                text.append(Component.text("当前所使用的QQ机器人为: %d".formatted(botId)).color(NamedTextColor.GREEN));
+
+                commandSender.sendMessage(text.build());
 
                 return true;
             }
 
             if (!commandSender.hasPermission(this.permSet)) {
-                sendError(commandSender, "你没有权限设置QQ机器人ID！");
+                plugin.sendError(commandSender, "你没有权限设置QQ机器人ID！");
                 return true;
             }
 
@@ -122,12 +133,19 @@ class MainCommand extends TheMcCommand.HasSub {
             try {
                 botId = Long.parseLong(argId);
             } catch (NumberFormatException e) {
-                sendError(commandSender, "%s 不是一个正确的QQ号码！".formatted(argId));
+                plugin.sendError(commandSender, "%s 不是一个正确的QQ号码！".formatted(argId));
                 return true;
             }
 
-            plugin.setBotId(botId);
-            commandSender.sendMessage(Component.text("已将QQ机器人ID设置为: %d".formatted(plugin.getBotId())));
+            plugin.getConfigManager().setBotId(botId);
+            plugin.getConfigManager().save();
+
+            final TextComponent.Builder text = Component.text();
+            plugin.appendPrefix(text);
+            text.appendSpace();
+            text.append(Component.text("已将QQ机器人ID设置为: %d".formatted(plugin.getConfigManager().getBotId())).color(NamedTextColor.GREEN));
+
+            commandSender.sendMessage(text.build());
 
             return true;
         }
@@ -183,19 +201,24 @@ class MainCommand extends TheMcCommand.HasSub {
 
             if (argId == null) {
                 if (!commandSender.hasPermission(this.permGet)) {
-                    sendError(commandSender, "你没有权限查看%sID！".formatted(name));
+                    plugin.sendError(commandSender, "你没有权限查看%sID！".formatted(name));
                     return true;
                 }
 
-                final long id = this.isMain ? plugin.getMainGroupId() : plugin.getAuditGroupId();
+                final long id = this.isMain ? plugin.getConfigManager().getMainGroupId() : plugin.getConfigManager().getAuditGroupId();
 
-                commandSender.sendMessage(Component.text("当前%sID为: %d".formatted(name, id)));
+                final TextComponent.Builder text = Component.text();
+                plugin.appendPrefix(text);
+                text.appendSpace();
+                text.append(Component.text("当前%sID为: %d".formatted(name, id)).color(NamedTextColor.GREEN));
+
+                commandSender.sendMessage(text.build());
 
                 return true;
             }
 
             if (!commandSender.hasPermission(this.permSet)) {
-                sendError(commandSender, "你没有权限设置%sID！".formatted(name));
+                plugin.sendError(commandSender, "你没有权限设置%sID！".formatted(name));
                 return true;
             }
 
@@ -204,17 +227,22 @@ class MainCommand extends TheMcCommand.HasSub {
             try {
                 id = Long.parseLong(argId);
             } catch (NumberFormatException e) {
-                sendError(commandSender, "%s 不是一个正确的QQ群号！".formatted(argId));
+                plugin.sendError(commandSender, "%s 不是一个正确的QQ群号！".formatted(argId));
                 return true;
             }
 
             if (this.isMain) {
-                plugin.setMainGroupId(id);
+                plugin.getConfigManager().setMainGroupId(id);
             } else {
-                plugin.setAuditGroupId(id);
+                plugin.getConfigManager().setAuditGroupId(id);
             }
+            plugin.getConfigManager().save();
 
-            commandSender.sendMessage(Component.text("已将%sID设置为: %d".formatted(name, id)));
+            final TextComponent.Builder text = Component.text();
+            plugin.appendPrefix(text);
+            text.appendSpace();
+            text.append(Component.text("已将%sID设置为: %d".formatted(name, id)).color(NamedTextColor.GREEN));
+            commandSender.sendMessage(text.build());
 
             return true;
         }
@@ -252,21 +280,22 @@ class MainCommand extends TheMcCommand.HasSub {
         public boolean onCommand(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
             final String argQq = strings.length > 0 ? strings[0] : null;
 
-            final long qq;
+
             if (argQq == null) {
-                sendError(commandSender, "你必须提供参数：QQ号");
+                plugin.sendError(commandSender, "你必须提供参数：QQ号");
                 return true;
             }
 
+            final long qq;
             try {
                 qq = Long.parseLong(argQq);
             } catch (NumberFormatException e) {
-                sendError(commandSender, "%s 不是正确的QQ号".formatted(argQq));
+                plugin.sendError(commandSender, "%s 不是正确的QQ号".formatted(argQq));
                 return true;
             }
 
             plugin.getTaskScheduler().runTaskAsynchronously(() -> {
-                final long mainGroupId = plugin.getMainGroupId();
+                final long mainGroupId = plugin.getConfigManager().getMainGroupId();
                 for (Bot bot : Bot.getInstances()) {
                     if (bot == null) continue;
                     if (!bot.isOnline()) continue;
@@ -277,103 +306,140 @@ class MainCommand extends TheMcCommand.HasSub {
 
                     final NormalMember normalMember = group.get(qq);
                     if (normalMember == null) {
-                        sendError(commandSender, "QQ群[%d]中不包含成员QQ[%d]".formatted(mainGroupId, qq));
+                        plugin.sendError(commandSender, "QQ群[%d]中不包含成员QQ[%d]".formatted(mainGroupId, qq));
                         return;
                     }
 
                     final TextComponent.Builder text = Component.text();
 
-                    text.append(Component.text("ID: %d".formatted(normalMember.getId())));
-                    text.appendNewline();
+                    plugin.appendPrefix(text);
+                    text.append(Component.text(" ==== QQ群成员信息 ====").color(NamedTextColor.GREEN));
 
-                    text.append(Component.text("Nick: %s".formatted(normalMember.getNick())));
                     text.appendNewline();
+                    text.append(Component.text("ID: %d".formatted(normalMember.getId())));
+
+                    text.appendNewline();
+                    text.append(Component.text("Nick: %s".formatted(normalMember.getNick())));
+
 
                     final String avatarUrl = normalMember.getAvatarUrl();
+                    text.appendNewline();
                     text.append(Component.text("AvatarUrl: "));
                     text.append(Component.text(avatarUrl).color(NamedTextColor.GREEN)
                             .decorate(TextDecoration.UNDERLINED)
                             .clickEvent(ClickEvent.openUrl(avatarUrl))
                     );
-                    text.appendNewline();
 
                     final String nameCard = normalMember.getNameCard();
-                    text.append(Component.text("NameCard: %s".formatted(nameCard)));
                     text.appendNewline();
+                    text.append(Component.text("NameCard: %s".formatted(nameCard)));
 
                     final int joinTimestamp = normalMember.getJoinTimestamp();
-                    text.append(Component.text("JoinTimeStamp: %d".formatted(joinTimestamp)));
                     text.appendNewline();
+                    text.append(Component.text("JoinTimeStamp: %d".formatted(joinTimestamp)));
 
                     final String specialTitle = normalMember.getSpecialTitle();
-                    text.append(Component.text("SpecialTitle: %s".formatted(specialTitle)));
                     text.appendNewline();
+                    text.append(Component.text("SpecialTitle: %s".formatted(specialTitle)));
 
                     final String remark = normalMember.getRemark();
-                    text.append(Component.text("Remark: %s".formatted(remark)));
                     text.appendNewline();
+                    text.append(Component.text("Remark: %s".formatted(remark)));
 
                     final String rankTitle = normalMember.getRankTitle();
-                    text.append(Component.text("RankTitle: %s".formatted(rankTitle)));
                     text.appendNewline();
+                    text.append(Component.text("RankTitle: %s".formatted(rankTitle)));
 
                     final String temperatureTitle = normalMember.getTemperatureTitle();
-                    text.append(Component.text("TemperatureTitle: %s".formatted(temperatureTitle)));
                     text.appendNewline();
+                    text.append(Component.text("TemperatureTitle: %s".formatted(temperatureTitle)));
 
                     final int permissionLevel = normalMember.getPermission().getLevel();
-                    text.append(Component.text("PermissionLevel: %d".formatted(permissionLevel)));
                     text.appendNewline();
+                    text.append(Component.text("PermissionLevel: %d".formatted(permissionLevel)));
 
                     final MemberActive active = normalMember.getActive();
                     final int temperature = active.getTemperature();
-                    text.append(Component.text("ActiveTemperature: %d".formatted(temperature)));
                     text.appendNewline();
+                    text.append(Component.text("ActiveTemperature: %d".formatted(temperature)));
+
 
                     final int point = active.getPoint();
-                    text.append(Component.text("ActivePoint: %d".formatted(point)));
                     text.appendNewline();
+                    text.append(Component.text("ActivePoint: %d".formatted(point)));
 
                     final int rank = active.getRank();
-                    text.append(Component.text("ActiveRank: %d".formatted(rank)));
                     text.appendNewline();
+                    text.append(Component.text("ActiveRank: %d".formatted(rank)));
 
                     final UserProfile userProfile = normalMember.queryProfile();
                     final int age = userProfile.getAge();
 
-                    text.append(Component.text("UserProfile.Age: %d".formatted(age)));
                     text.appendNewline();
+                    text.append(Component.text("UserProfile.Age: %d".formatted(age)));
+
 
                     final String email = userProfile.getEmail();
-                    text.append(Component.text("UserProfile.Email: %s".formatted(email)));
                     text.appendNewline();
+                    text.append(Component.text("UserProfile.Email: %s".formatted(email)));
 
                     final String sign = userProfile.getSign();
-                    text.append(Component.text("UserProfile.Sign: %s".formatted(sign)));
                     text.appendNewline();
+                    text.append(Component.text("UserProfile.Sign: %s".formatted(sign)));
 
                     final UserProfile.Sex sex = userProfile.getSex();
                     final int ordinal = sex.ordinal();
                     final String name = sex.name();
-                    text.append(Component.text("UserProfile.Sex: %s(%d)".formatted(name, ordinal)));
                     text.appendNewline();
+                    text.append(Component.text("UserProfile.Sex: %s(%d)".formatted(name, ordinal)));
 
                     final int qLevel = userProfile.getQLevel();
-                    text.append(Component.text("UserProfile:QLevel: %d".formatted(qLevel)));
                     text.appendNewline();
+                    text.append(Component.text("UserProfile:QLevel: %d".formatted(qLevel)));
 
                     final String nickname = userProfile.getNickname();
-                    text.append(Component.text("UserProfile:NickName: %s".formatted(nickname)));
                     text.appendNewline();
+                    text.append(Component.text("UserProfile:NickName: %s".formatted(nickname)));
 
                     final int friendGroupId = userProfile.getFriendGroupId();
+                    text.appendNewline();
                     text.append(Component.text("UserProfile.FriendGroupId: %d".formatted(friendGroupId)));
 
                     commandSender.sendMessage(text.build());
-                    return;
-                }
 
-                sendError(commandSender, "没有任何一个机器人能访问QQ群[%d]".formatted(mainGroupId));
+                    // 更新信息
+                    final QqGroupMemberInfoApi api = plugin.getQqGroupMemberInfoApi();
+                    if (api != null) {
+                        final QqGroupMemberInfoService service = api.getQqGroupMemberInfoService();
+                        try {
+                            final boolean added = service.addOrUpdateByQq(new QqGroupMemberInfo(
+                                    normalMember.getId(),
+                                    normalMember.getNick(),
+                                    normalMember.getNameCard(),
+                                    System.currentTimeMillis(),
+                                    true,
+                                    userProfile.getQLevel()
+                            ));
+
+                            final TextComponent.Builder t = Component.text();
+                            plugin.appendPrefix(t);
+                            t.appendSpace();
+                            t.append(Component.text("已%sQQ群成员信息".formatted(
+                                    added ? "添加" : "更新"
+                            )).color(NamedTextColor.GREEN));
+
+                            commandSender.sendMessage(t.build());
+
+                        } catch (Exception e) {
+                            plugin.handleException(e);
+                        }
+                    }
+
+                    return;
+
+                } // end for
+
+                plugin.sendError(commandSender, "没有任何一个机器人能访问QQ群[%d]".formatted(mainGroupId));
             });
 
             return true;
@@ -393,4 +459,46 @@ class MainCommand extends TheMcCommand.HasSub {
         }
     }
 
+    class Test extends TheMcCommand {
+
+        private final @NotNull Permission permission;
+
+        protected Test() {
+            super("test");
+            this.permission = plugin.addPermission(MainCommand.this.permission.getName() + "." + this.getLabel());
+        }
+
+        @Override
+        protected boolean canNotExecute(@NotNull CommandSender commandSender) {
+            return !commandSender.hasPermission(this.permission);
+        }
+
+        @Override
+        public boolean onCommand(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
+
+            plugin.getTaskScheduler().runTaskAsynchronously(() -> {
+                try {
+                    plugin.createMainGroupAccess();
+                    plugin.sendInfo(commandSender, "可以访问主群");
+                } catch (Exception e) {
+                    plugin.sendException(commandSender, e);
+                }
+
+                try {
+                    plugin.createAuditGroupAccess();
+                    plugin.sendInfo(commandSender, "可以访问审核群");
+                } catch (Exception e) {
+                    plugin.sendException(commandSender, e);
+                }
+
+            });
+
+            return true;
+        }
+
+        @Override
+        public @Nullable List<String> onTabComplete(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
+            return null;
+        }
+    }
 }

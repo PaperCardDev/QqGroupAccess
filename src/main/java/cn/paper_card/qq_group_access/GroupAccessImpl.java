@@ -10,6 +10,7 @@ import net.mamoe.mirai.message.data.MessageChain;
 import net.mamoe.mirai.message.data.MessageChainBuilder;
 import net.mamoe.mirai.message.data.PlainText;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -24,6 +25,11 @@ class GroupAccessImpl implements GroupAccess {
     GroupAccessImpl(@NotNull Group group, @NotNull BlockingQueue<Runnable> messageSends) {
         this.group = group;
         this.messageSends = messageSends;
+    }
+
+    @Override
+    public long getId() {
+        return this.group.getId();
     }
 
     @Override
@@ -88,11 +94,15 @@ class GroupAccessImpl implements GroupAccess {
     public void setMute(long qq, int seconds) throws Exception {
         final NormalMember normalMember = group.get(qq);
         if (normalMember == null) throw new Exception("QQ%d不在群里！".formatted(qq));
-        try {
-            normalMember.mute(seconds);
-        } catch (RuntimeException e) {
-            throw new Exception(e);
-        }
+        normalMember.mute(seconds);
+    }
+
+    @Override
+    public @Nullable GroupMember getMember(long qq) {
+        final NormalMember nm = this.group.get(qq);
+        if (nm == null) return null;
+
+        return new GroupMemberImpl(nm);
     }
 
     @Override

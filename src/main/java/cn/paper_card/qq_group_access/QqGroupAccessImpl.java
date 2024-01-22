@@ -14,12 +14,12 @@ class QqGroupAccessImpl implements QqGroupAccessApi {
 
     @Override
     public long getMainGroupId() {
-        return this.plugin.getMainGroupId();
+        return this.plugin.getConfigManager().getMainGroupId();
     }
 
     @Override
     public long getAuditGroupId() {
-        return this.plugin.getAuditGroupId();
+        return this.plugin.getConfigManager().getAuditGroupId();
     }
 
     @Override

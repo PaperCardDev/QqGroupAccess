@@ -23,6 +23,11 @@ class GroupMemberImpl implements GroupMember {
     }
 
     @Override
+    public String getNameCard() {
+        return this.member.getNameCard();
+    }
+
+    @Override
     public int getJoinTime() {
         return this.member.getJoinTimestamp();
     }

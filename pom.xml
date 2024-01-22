@@ -101,7 +101,7 @@
         <dependency>
             <groupId>com.github.PaperCardDev</groupId>
             <artifactId>qq-group-access-api</artifactId>
-            <version>1.1</version>
+            <version>1.2.1</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/com.google.code.gson/gson -->
@@ -124,7 +124,7 @@
         <dependency>
             <groupId>com.github.PaperCardDev</groupId>
             <artifactId>qq-bind-api</artifactId>
-            <version>1.1</version>
+            <version>1.3</version>
             <scope>provided</scope>
         </dependency>
 
@@ -139,20 +139,6 @@
             <groupId>com.github.PaperCardDev</groupId>
             <artifactId>chat-gpt-api</artifactId>
             <version>1.1</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>cn.paper_card</groupId>
-            <artifactId>PlayerQqGroupRemark</artifactId>
-            <version>1.0</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>cn.paper_card</groupId>
-            <artifactId>PlayerQqInGroup</artifactId>
-            <version>1.0</version>
             <scope>provided</scope>
         </dependency>
 
@@ -178,13 +164,6 @@
         <dependency>
             <groupId>com.github.PaperCardDev</groupId>
             <artifactId>little-skin-login-api</artifactId>
-            <version>1.0</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>cn.paper_card</groupId>
-            <artifactId>AcceptPlayerManuals</artifactId>
             <version>1.0</version>
             <scope>provided</scope>
         </dependency>

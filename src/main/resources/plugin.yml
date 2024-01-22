@@ -17,6 +17,4 @@ commands:
 
 permissions:
   qq-group-access.command:
-    default: true
-
-
+    default: op

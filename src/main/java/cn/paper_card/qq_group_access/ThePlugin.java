@@ -1,6 +1,5 @@
 package cn.paper_card.qq_group_access;
 
-import cn.paper_card.accept_player_manuals.AcceptPlayerManualsApi;
 import cn.paper_card.bilibili_bind.api.BilibiliBindApi;
 import cn.paper_card.chat_gpt.api.ChatGptApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
@@ -8,8 +7,6 @@ import cn.paper_card.little_skin_login.api.LittleSkinLoginApi;
 import cn.paper_card.paper_card_auth.api.PaperCardAuthApi;
 import cn.paper_card.player_last_quit.api.PlayerLastQuitApi2;
 import cn.paper_card.player_last_quit.api.QuitInfo;
-import cn.paper_card.player_qq_group_remark.PlayerQqGroupRemarkApi;
-import cn.paper_card.player_qq_in_group.PlayerQqInGroupApi;
 import cn.paper_card.qq_bind.api.BindInfo;
 import cn.paper_card.qq_bind.api.QqBindApi;
 import cn.paper_card.qq_group_access.api.GroupAccess;
@@ -25,6 +22,9 @@ import cn.paper_card.sponsorship.api.SponsorshipApi2;
 import com.github.Anon8281.universalScheduler.UniversalScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.schedulers.TaskScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.tasks.MyScheduledTask;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.Group;
 import net.mamoe.mirai.contact.Member;
@@ -35,6 +35,7 @@ import net.mamoe.mirai.event.events.*;
 import net.mamoe.mirai.message.MessageReceipt;
 import net.mamoe.mirai.message.data.*;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.Permission;
@@ -61,13 +62,7 @@ public final class ThePlugin extends JavaPlugin {
 
     private PaperCardAuthApi paperCardAuthApi = null;
 
-    private PlayerQqGroupRemarkApi playerQqGroupRemarkApi = null;
-
-    private PlayerQqInGroupApi playerQqInGroupApi = null;
-
     private GroupRootCommandApi groupRootCommandApi = null;
-
-    private AcceptPlayerManualsApi acceptPlayerManualsApi = null;
 
     private QqGroupChatSyncApi qqGroupChatSyncApi = null;
 
@@ -81,12 +76,8 @@ public final class ThePlugin extends JavaPlugin {
 
     private final @NotNull TaskScheduler taskScheduler;
 
-    private final static String PATH_BOT_ID = "bot-id";
+    private final @NotNull ConfigManager configManager;
 
-    private final static String PATH_OWNER_ID = "owner-id";
-    private final static String PATH_MAIN_GROUP_ID = "main-group-id";
-
-    private final static String PATH_AUDIT_GROUP_ID = "audit-group-id";
 
     private final @NotNull HashSet<Long> auditSendImageQq = new HashSet<>();
     private final @NotNull HashSet<Long> passAuditQq = new HashSet<>();
@@ -104,25 +95,7 @@ public final class ThePlugin extends JavaPlugin {
         this.messageSends = new LinkedBlockingQueue<>();
         this.leaveTimes = new HashMap<>();
         this.groupSyncMessages = new ConcurrentHashMap<>();
-    }
-
-
-    private void getPlayerQqGroupRemarkApi() {
-        if (this.playerQqGroupRemarkApi == null) {
-            final Plugin plugin = this.getServer().getPluginManager().getPlugin("PlayerQqGroupRemark");
-            if (plugin instanceof final PlayerQqGroupRemarkApi api) {
-                this.playerQqGroupRemarkApi = api;
-            }
-        }
-    }
-
-    private void getPlayerQqInGroupApi() {
-        if (this.playerQqInGroupApi == null) {
-            final Plugin plugin = this.getServer().getPluginManager().getPlugin("PlayerQqInGroup");
-            if (plugin instanceof final PlayerQqInGroupApi api) {
-                this.playerQqInGroupApi = api;
-            }
-        }
+        this.configManager = new ConfigManager(this);
     }
 
     private void getGroupRootCommandApi() {
@@ -134,56 +107,14 @@ public final class ThePlugin extends JavaPlugin {
         }
     }
 
-    private void getAcceptPlayerManualsApi() {
-        if (this.acceptPlayerManualsApi == null) {
-            final Plugin plugin = this.getServer().getPluginManager().getPlugin("AcceptPlayerManuals");
-            if (plugin instanceof final AcceptPlayerManualsApi api) {
-                this.acceptPlayerManualsApi = api;
-            }
-        }
-    }
-
     @NotNull TaskScheduler getTaskScheduler() {
         return this.taskScheduler;
     }
 
-    void setBotId(long id) {
-        this.getConfig().set(PATH_BOT_ID, id);
-    }
-
-    long getBotId() {
-        return this.getConfig().getLong(PATH_BOT_ID, 0);
-    }
-
-    long getOwnerId() {
-        return this.getConfig().getLong(PATH_OWNER_ID, 0);
-    }
-
-    void setOwnerId(long v) {
-        this.getConfig().set(PATH_OWNER_ID, v);
-    }
-
-    void setMainGroupId(long id) {
-        this.getConfig().set(PATH_MAIN_GROUP_ID, id);
-    }
-
-
-    long getMainGroupId() {
-        return this.getConfig().getLong(PATH_MAIN_GROUP_ID, 0);
-    }
-
-    void setAuditGroupId(long id) {
-        this.getConfig().set(PATH_AUDIT_GROUP_ID, id);
-    }
-
-
-    long getAuditGroupId() {
-        return this.getConfig().getLong(PATH_AUDIT_GROUP_ID, 0);
-    }
 
     private void onNewFriendRequestEvent() {
         GlobalEventChannel.INSTANCE.subscribeAlways(NewFriendRequestEvent.class, event -> {
-            final long ownerId = this.getOwnerId();
+            final long ownerId = this.configManager.getOwnerId();
             if (ownerId == 0) return;
 
             final long fromId = event.getFromId();
@@ -212,8 +143,8 @@ public final class ThePlugin extends JavaPlugin {
                     bot.getNick(), bot.getId(), invitorId, event.getGroupName(), event.getGroupId()
             ));
 
-            final long auditGroupId = this.getAuditGroupId();
-            final long mainGroupId = this.getMainGroupId();
+            final long auditGroupId = this.configManager.getAuditGroupId();
+            final long mainGroupId = this.configManager.getMainGroupId();
 
             if (auditGroupId == groupId) {
                 this.getLogger().info("自动同意加入主群");
@@ -228,8 +159,8 @@ public final class ThePlugin extends JavaPlugin {
     private void onBotJoinGroupEvent() {
         GlobalEventChannel.INSTANCE.subscribeAlways(BotJoinGroupEvent.class, event -> {
             final long groupId = event.getGroupId();
-            final long mainGroupId = this.getMainGroupId();
-            final long auditGroupId = this.getAuditGroupId();
+            final long mainGroupId = this.configManager.getMainGroupId();
+            final long auditGroupId = this.configManager.getAuditGroupId();
 
             if (groupId == mainGroupId || groupId == auditGroupId) {
                 final Runnable run = () -> {
@@ -242,44 +173,6 @@ public final class ThePlugin extends JavaPlugin {
             }
         });
     }
-
-    private void onGroupTempMessageEvent() {
-
-        GlobalEventChannel.INSTANCE.subscribeAlways(GroupTempMessageEvent.class, event -> {
-            final Bot bot = event.getBot();
-            if (bot.getId() != this.getBotId()) return;
-
-            final Group group = event.getGroup();
-            if (group.getId() != this.getAuditGroupId()) return;
-
-            final NormalMember sender = event.getSender();
-
-            final boolean contains;
-            synchronized (this.passAuditQq) {
-                contains = this.passAuditQq.contains(sender.getId());
-            }
-
-            if (!contains) return;
-
-            final MessageChain message = event.getMessage();
-            final String s = message.contentToString();
-            if ("入群方式".equals(s)) {
-
-                final Runnable runnable = () -> sender.sendMessage("""
-                        你好呀！恭喜你已经通过了审核~
-                        我们的QQ主群为：%d
-                        期待你的加入~
-                        申请入群会直接同意噢~
-                        如果申请之后一分钟内没有入群，
-                        可能是出现了一点故障，
-                        联系审核群其它管理员就好啦~""".formatted(this.getMainGroupId()));
-
-                if (!messageSends.offer(runnable)) runnable.run();
-
-            }
-        });
-    }
-
 
     private void transportGroupMessage(@NotNull String senderName, long senderQq, @NotNull Group group, @NotNull MessageChain messageChain) {
         // 转发到游戏内
@@ -425,25 +318,24 @@ public final class ThePlugin extends JavaPlugin {
 
         final MessageChain message = event.getMessage();
 
-        if (this.playerQqGroupRemarkApi != null) {
-            this.playerQqGroupRemarkApi.updateRemarkByGroupMessage(sender.getId(), sender.getNameCard());
-        }
+        { // 更新在群状态和群名片的数据
+            final QqGroupMemberInfoApi api = this.qqGroupMemberInfoApi;
+            if (api != null) {
+                try {
+                    final String reply = this.qqGroupMemberInfoApi.onMainGroupMessage(sender.getId(), sender.getNameCard(), messageStr);
+                    if (reply != null) {
+                        final Runnable run = () -> group.sendMessage(new MessageChainBuilder()
+                                .append(new QuoteReply(event.getMessage()))
+                                .append(new At(sender.getId()))
+                                .append(" ")
+                                .append(new PlainText(reply))
+                                .build());
 
-        if (this.qqGroupMemberInfoApi != null) {
-            try {
-                final String reply = this.qqGroupMemberInfoApi.onMainGroupMessage(sender.getId(), sender.getNameCard(), messageStr);
-                if (reply != null) {
-                    final Runnable run = () -> group.sendMessage(new MessageChainBuilder()
-                            .append(new QuoteReply(event.getMessage()))
-                            .append(new At(sender.getId()))
-                            .append(" ")
-                            .append(new PlainText(reply))
-                            .build());
-
-                    if (!messageSends.offer(run)) run.run();
+                        if (!messageSends.offer(run)) run.run();
+                    }
+                } catch (Exception e) {
+                    getSLF4JLogger().error("", e);
                 }
-            } catch (Exception e) {
-                getSLF4JLogger().error("", e);
             }
         }
 
@@ -452,7 +344,6 @@ public final class ThePlugin extends JavaPlugin {
 
         // QQ群消息 -> 游戏内
         this.transportGroupMessage(senderName, senderQq, group, message);
-
 
         // QQ绑定验证码相关
         if (this.qqBindApi != null) {
@@ -524,23 +415,6 @@ public final class ThePlugin extends JavaPlugin {
         // 普通成员命令
         executeMainGroupCommand(false, commandLine, message, group, sender);
 
-        // 玩家同意协议相关
-        if (this.acceptPlayerManualsApi != null) {
-            final @Nullable String[] reply = this.acceptPlayerManualsApi.onMainGroupMessage(messageStr, sender.getId());
-            if (reply != null) {
-                for (final String s : reply) {
-                    if (s == null) continue;
-
-                    final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
-                            .append(new QuoteReply(event.getMessage()))
-                            .append(new At(sender.getId()))
-                            .append(new PlainText(" "))
-                            .append(new PlainText(s))
-                            .build());
-                    if (!messageSends.offer(runnable)) runnable.run();
-                }
-            }
-        }
     }
 
     private void onAuditGroupMessage(@NotNull GroupMessageEvent event) {
@@ -571,7 +445,7 @@ public final class ThePlugin extends JavaPlugin {
                         .append("""
                                 已颁发入群令牌，QQ主群为：%d
                                 请在两分钟内申请加入~
-                                您的QQ: %s(%d)""".formatted(getMainGroupId(), event.getSenderName(), event.getSender().getId()))
+                                您的QQ: %s(%d)""".formatted(this.configManager.getMainGroupId(), event.getSenderName(), event.getSender().getId()))
                         .build());
 
                 if (!messageSends.offer(runnable)) runnable.run();
@@ -614,7 +488,7 @@ public final class ThePlugin extends JavaPlugin {
 
             if (this.chatGptApi != null) {
                 final Group group = event.getGroup();
-                if (group.getId() == this.getMainGroupId()) { // 主群
+                if (group.getId() == this.configManager.getMainGroupId()) { // 主群
                     final MessageChain message = event.getMessage();
                     // 检查是不是AT自己
                     boolean atMe = false;
@@ -667,20 +541,20 @@ public final class ThePlugin extends JavaPlugin {
                 }
             }
 
-            final long botId = this.getBotId();
+            final long botId = this.configManager.getBotId();
             if (event.getBot().getId() != botId) return;
 
-            if (event.getGroup().getId() == this.getMainGroupId()) this.onMainGroupMessage(event);
-            if (event.getGroup().getId() == this.getAuditGroupId()) this.onAuditGroupMessage(event);
+            if (event.getGroup().getId() == this.configManager.getMainGroupId()) this.onMainGroupMessage(event);
+            if (event.getGroup().getId() == this.configManager.getAuditGroupId()) this.onAuditGroupMessage(event);
 
         });
     }
 
     private void onMemberLeave() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.class, event -> {
-            if (event.getBot().getId() != this.getBotId()) return;
+            if (event.getBot().getId() != this.configManager.getBotId()) return;
 
-            if (event.getGroupId() != this.getMainGroupId()) return;
+            if (event.getGroupId() != this.configManager.getMainGroupId()) return;
 
             // 退出主群
             final Group group = event.getGroup();
@@ -688,13 +562,11 @@ public final class ThePlugin extends JavaPlugin {
 
             final long qq = member.getId();
 
-            if (this.playerQqInGroupApi != null)
-                this.playerQqInGroupApi.onMemberQuitGroup(qq);
-
             if (this.qqGroupMemberInfoApi != null) {
                 final QqGroupMemberInfoService service = this.qqGroupMemberInfoApi.getQqGroupMemberInfoService();
                 try {
-                    service.updateInGroup(qq, false);
+                    final boolean updated = service.updateInGroup(qq, false);
+                    getSLF4JLogger().info("%s (%d) 退出主群，信息更新：%s".formatted(member.getNameCard(), member.getId(), updated));
                 } catch (Exception e) {
                     handleException(e);
                 }
@@ -716,7 +588,7 @@ public final class ThePlugin extends JavaPlugin {
                         if (name == null) name = offlinePlayer.getUniqueId().toString();
 
                     } else {
-                        name = "未绑定QQ";
+                        name = "未绑定正版";
                     }
                 } catch (Exception e) {
                     this.getSLF4JLogger().error("qq bind service -> query by qq", e);
@@ -738,9 +610,9 @@ public final class ThePlugin extends JavaPlugin {
         });
 
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.Kick.class, event -> {
-            if (event.getBot().getId() != this.getBotId()) return;
+            if (event.getBot().getId() != this.configManager.getBotId()) return;
 
-            if (event.getGroupId() != this.getMainGroupId()) return;
+            if (event.getGroupId() != this.configManager.getMainGroupId()) return;
 
             final NormalMember member = event.getMember();
             final NormalMember operator = event.getOperator();
@@ -836,7 +708,7 @@ public final class ThePlugin extends JavaPlugin {
             final QqGroupMemberInfoService s = api.getQqGroupMemberInfoService();
 
             try {
-                s.addOrUpdateByQq(new QqGroupMemberInfo(
+                final boolean added = s.addOrUpdateByQq(new QqGroupMemberInfo(
                         member.getId(),
                         member.getNick(),
                         member.getNameCard(),
@@ -844,6 +716,8 @@ public final class ThePlugin extends JavaPlugin {
                         inGroup,
                         p.getQLevel()
                 ));
+
+                getSLF4JLogger().info("%s (%d) 入群，添加记录：%s".formatted(member.getNameCard(), member.getId(), added));
             } catch (Exception e) {
                 handleException(e);
             }
@@ -852,9 +726,9 @@ public final class ThePlugin extends JavaPlugin {
 
     private void onMemberJoin() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
-            if (event.getBot().getId() != this.getBotId()) return;
+            if (event.getBot().getId() != this.configManager.getBotId()) return;
 
-            if (event.getGroupId() == getAuditGroupId()) { // 进入审核群
+            if (event.getGroupId() == this.configManager.getAuditGroupId()) { // 进入审核群
 
                 final Runnable runnable = () -> {
                     final String msg = """
@@ -877,15 +751,9 @@ public final class ThePlugin extends JavaPlugin {
                 return;
             }
 
-            if (event.getGroupId() == getMainGroupId()) { // 进入主群
-
-                if (event.getGroupId() != this.getMainGroupId()) return;
+            if (event.getGroupId() == this.configManager.getMainGroupId()) { // 进入主群
 
                 final long joinQq = event.getMember().getId();
-
-                if (this.playerQqInGroupApi != null) {
-                    this.playerQqInGroupApi.onMemberJoinGroup(joinQq);
-                }
 
                 // 重过审集合中移出
                 final boolean removed;
@@ -897,6 +765,7 @@ public final class ThePlugin extends JavaPlugin {
                 final UserProfile userProfile = event.getMember().queryProfile();
                 level = userProfile.getQLevel();
 
+                // 记录群成员信息
                 this.recordQqInfoWhenJoin(event.getMember(), true, userProfile);
 
                 // 检查是否老玩家入群
@@ -926,7 +795,7 @@ public final class ThePlugin extends JavaPlugin {
                     if (removed) {
                         msg = "已回收你的入群令牌";
                     } else {
-                        msg = "未检测到你的入群令牌，请先加入审核群%d获取令牌！".formatted(this.getAuditGroupId());
+                        msg = "未检测到你的入群令牌，请先加入审核群%d获取令牌！".formatted(this.configManager.getAuditGroupId());
                     }
 
                     event.getGroup().sendMessage(new MessageChainBuilder()
@@ -1021,7 +890,7 @@ public final class ThePlugin extends JavaPlugin {
     private void onBotLogin() {
 
         GlobalEventChannel.INSTANCE.subscribeAlways(BotOnlineEvent.class, event -> {
-            if (event.getBot().getId() != this.getBotId()) return;
+            if (event.getBot().getId() != this.configManager.getBotId()) return;
 
             final GroupAccess mainGroupAccess;
             try {
@@ -1042,14 +911,11 @@ public final class ThePlugin extends JavaPlugin {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinRequestEvent.class, event -> {
             getLogger().info("DEBUG: 入群申请事件");
 
-            if (event.getBot().getId() != this.getBotId()) return;
-            if (event.getGroupId() != this.getMainGroupId()) return;
+            if (event.getBot().getId() != this.configManager.getBotId()) return;
+            if (event.getGroupId() != this.configManager.getMainGroupId()) return;
 
             final Group group = event.getGroup();
-            if (group == null) {
-                getLogger().info("DEBUG: group == null!");
-                return;
-            }
+            if (group == null) return;
 
             // 进入主群的申请
 
@@ -1091,36 +957,18 @@ public final class ThePlugin extends JavaPlugin {
                         if (name == null) name = bindInfo.uuid().toString();
                         final String name1 = name;
 
-                        final boolean banned = offlinePlayer.isBanned();
-
-                        final Runnable runnable = () -> {
-
-                            if (banned) {
-                                group.sendMessage("""
-                                        被封禁玩家申请入群，请手动处理
-                                        游戏名：%s
-                                        QQ: %s (%s)""".formatted(
-                                        name1, fromNick, fromId
-                                ));
-
-                            } else {
-                                group.sendMessage("""
-                                        自动同意老玩家入群：
-                                        游戏名：%s
-                                        QQ: %s (%d)""".formatted(
-                                        name1, fromNick, fromId
-                                ));
-                            }
-
-                        };
+                        final Runnable runnable = () -> group.sendMessage("""
+                                自动同意老玩家入群：
+                                游戏名：%s
+                                QQ: %s (%d)""".formatted(
+                                name1, fromNick, fromId
+                        ));
 
                         final boolean offer = messageSends.offer(runnable);
+
                         if (!offer) runnable.run();
 
-                        if (!banned) {
-                            event.accept();
-                        }
-
+                        event.accept();
                         return;
                     }
 
@@ -1155,7 +1003,7 @@ public final class ThePlugin extends JavaPlugin {
                 if (hasMember) {
 
                     event.reject(false, "请先通过审核！");
-                    auditGroupAccess.sendAtMessage(fromId, "请先发送三连截图到群里，再@我，得到入群令牌后，再申请加入主群！");
+                    auditGroupAccess.sendAtMessage(fromId, "请先发送三连截图到群里，再发送消息“已三连”，得到入群令牌后，再申请加入主群！");
 
                     final Runnable runnable = () -> {
                         final String msg = """
@@ -1192,15 +1040,15 @@ public final class ThePlugin extends JavaPlugin {
     public void onLoad() {
         QqGroupAccessImpl qqGroupAccess = new QqGroupAccessImpl(this);
 
-        this.getSLF4JLogger().info("注册%s...".formatted(PlayerQqInGroupApi.QqGroupAccess.class.getSimpleName()));
+        this.getSLF4JLogger().info("注册%s...".formatted(QqGroupAccessApi.class.getSimpleName()));
         this.getServer().getServicesManager().register(QqGroupAccessApi.class, qqGroupAccess, this, ServicePriority.Highest);
     }
 
     @NotNull Group getMainGroup() throws Exception {
-        final long botId = getBotId();
+        final long botId = this.configManager.getBotId();
         if (botId <= 0) throw new Exception("未配置QQ机器人ID");
 
-        final long mainGroupId = getMainGroupId();
+        final long mainGroupId = this.configManager.getMainGroupId();
         if (mainGroupId <= 0) throw new Exception("未配置QQ主群ID！");
 
         final Bot instance = Bot.findInstance(botId);
@@ -1228,11 +1076,9 @@ public final class ThePlugin extends JavaPlugin {
         command.setExecutor(mainCommand);
 
         // 保存配置文件
-        this.setMainGroupId(this.getMainGroupId());
-        this.setAuditGroupId(this.getAuditGroupId());
-        this.setBotId(this.getBotId());
-        this.setOwnerId(this.getOwnerId());
-        this.saveConfig();
+        this.configManager.setDefaults();
+        this.configManager.save();
+
 
         // 获取其它插件接口
         this.qqBindApi = this.getServer().getServicesManager().load(QqBindApi.class);
@@ -1317,7 +1163,7 @@ public final class ThePlugin extends JavaPlugin {
 
         // 设置QQ群号
         if (this.qqBindApi != null) {
-            final long mainGroupId = this.getMainGroupId();
+            final long mainGroupId = this.configManager.getMainGroupId();
             this.qqBindApi.setGroupId(mainGroupId);
             this.getLogger().info("已连接QqBindApi并设置QQ群号：" + mainGroupId);
         }
@@ -1334,10 +1180,7 @@ public final class ThePlugin extends JavaPlugin {
             this.chatGptApi = null;
         }
 
-        this.getPlayerQqGroupRemarkApi();
-        this.getPlayerQqInGroupApi();
         this.getGroupRootCommandApi();
-        this.getAcceptPlayerManualsApi();
 
         // 好友消息的处理
         this.onFriendMessage();
@@ -1360,8 +1203,6 @@ public final class ThePlugin extends JavaPlugin {
         this.onNewFriendRequestEvent();
         this.onBotInvitedJoinGroupRequestEvent();
         this.onBotJoinGroupEvent();
-
-        this.onGroupTempMessageEvent();
 
 
         final Random random = new Random();
@@ -1391,19 +1232,20 @@ public final class ThePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        this.saveConfig();
+        this.configManager.save();
 
         if (this.myScheduledTask != null) {
             this.myScheduledTask.cancel();
             this.myScheduledTask = null;
         }
         this.taskScheduler.cancelTasks();
+
+        this.getServer().getServicesManager().unregisterAll(this);
     }
 
-
     @NotNull GroupAccess createMainGroupAccess() throws Exception {
-        final long mainGroupId = this.getMainGroupId();
-        final long botId = this.getBotId();
+        final long mainGroupId = this.configManager.getMainGroupId();
+        final long botId = this.configManager.getBotId();
 
         if (botId == 0) throw new Exception("没有配置用于访问QQ群的QQ机器人账号！");
         if (mainGroupId == 0) throw new Exception("没有配置主群的QQ群号！");
@@ -1434,8 +1276,8 @@ public final class ThePlugin extends JavaPlugin {
 
 
     @NotNull GroupAccess createAuditGroupAccess() throws Exception {
-        final long auditGroupId = this.getAuditGroupId();
-        final long botId = this.getBotId();
+        final long auditGroupId = this.configManager.getAuditGroupId();
+        final long botId = this.configManager.getBotId();
 
         if (botId == 0) throw new Exception("没有配置用于访问QQ群的QQ机器人账号！");
         if (auditGroupId == 0) throw new Exception("没有配置审核群的QQ群号！");
@@ -1477,5 +1319,48 @@ public final class ThePlugin extends JavaPlugin {
 
     @NotNull ConcurrentHashMap<Integer, UUID> getGroupSyncMessages() {
         return this.groupSyncMessages;
+    }
+
+    @Nullable QqGroupMemberInfoApi getQqGroupMemberInfoApi() {
+        return this.qqGroupMemberInfoApi;
+    }
+
+    @NotNull ConfigManager getConfigManager() {
+        return this.configManager;
+    }
+
+    void sendError(@NotNull CommandSender sender, @NotNull String error) {
+        final TextComponent.Builder t = Component.text();
+        this.appendPrefix(t);
+        t.appendSpace();
+        t.append(Component.text(error).color(NamedTextColor.RED));
+        sender.sendMessage(t.build());
+    }
+
+    void sendInfo(@NotNull CommandSender sender, @NotNull String info) {
+        final TextComponent.Builder t = Component.text();
+        this.appendPrefix(t);
+        t.appendSpace();
+        t.append(Component.text(info).color(NamedTextColor.GREEN));
+        sender.sendMessage(t.build());
+    }
+
+    void sendException(@NotNull CommandSender sender, @NotNull Throwable e) {
+        final TextComponent.Builder text = Component.text();
+
+        this.appendPrefix(text);
+        text.append(Component.text(" ==== 异常信息 ====").color(NamedTextColor.DARK_RED));
+
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            text.appendNewline();
+            text.append(Component.text(t.toString()).color(NamedTextColor.RED));
+        }
+        sender.sendMessage(text.build());
+    }
+
+    void appendPrefix(@NotNull TextComponent.Builder text) {
+        text.append(Component.text("[").color(NamedTextColor.GRAY));
+        text.append(Component.text(this.getName()).color(NamedTextColor.DARK_AQUA));
+        text.append(Component.text("]").color(NamedTextColor.GRAY));
     }
 }
