@@ -892,17 +892,18 @@ public final class ThePlugin extends JavaPlugin {
         GlobalEventChannel.INSTANCE.subscribeAlways(BotOnlineEvent.class, event -> {
             if (event.getBot().getId() != this.configManager.getBotId()) return;
 
-            final GroupAccess mainGroupAccess;
-            try {
-                mainGroupAccess = createMainGroupAccess();
-            } catch (Exception e) {
-                getLogger().warning(e.toString());
-                return;
+            if (this.configManager.isSendMessageOnLogin()) {
+                final GroupAccess mainGroupAccess;
+                try {
+                    mainGroupAccess = createMainGroupAccess();
+                } catch (Exception e) {
+                    getLogger().warning(e.toString());
+                    return;
+                }
+
+                // 通知玩家上线
+                this.notifyLastQuitByQqGroup(mainGroupAccess, System.currentTimeMillis());
             }
-
-            // 通知玩家上线
-            this.notifyLastQuitByQqGroup(mainGroupAccess, System.currentTimeMillis());
-
         });
     }
 

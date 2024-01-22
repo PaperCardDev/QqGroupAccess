@@ -12,6 +12,8 @@ class ConfigManager {
 
     private final static String PATH_AUDIT_GROUP_ID = "audit-group-id";
 
+    private final static String PATH_SEND_MESSAGE_ON_LOGIN = "send-message-on-login";
+
     private final @NotNull ThePlugin plugin;
 
     ConfigManager(@NotNull ThePlugin plugin) {
@@ -56,11 +58,21 @@ class ConfigManager {
         return this.getConfig().getLong(PATH_AUDIT_GROUP_ID, 0);
     }
 
+    boolean isSendMessageOnLogin() {
+        return this.getConfig().getBoolean(PATH_SEND_MESSAGE_ON_LOGIN, true);
+    }
+
+    void setSendMessageOnLogin(boolean v) {
+        this.getConfig().set(PATH_SEND_MESSAGE_ON_LOGIN, v);
+    }
+
+
     void setDefaults() {
         this.setMainGroupId(this.getMainGroupId());
         this.setAuditGroupId(this.getAuditGroupId());
         this.setBotId(this.getBotId());
         this.setOwnerId(this.getOwnerId());
+        this.setSendMessageOnLogin(this.isSendMessageOnLogin());
     }
 
     void save() {
