@@ -15,6 +15,9 @@ import cn.paper_card.qq_bind.api.QqBindApi;
 import cn.paper_card.qq_group_access.api.GroupAccess;
 import cn.paper_card.qq_group_access.api.QqGroupAccessApi;
 import cn.paper_card.qq_group_chat_sync.api.QqGroupChatSyncApi;
+import cn.paper_card.qq_group_member_info.api.QqGroupMemberInfo;
+import cn.paper_card.qq_group_member_info.api.QqGroupMemberInfoApi;
+import cn.paper_card.qq_group_member_info.api.QqGroupMemberInfoService;
 import cn.paper_card.smurf.api.SmurfApi;
 import cn.paper_card.smurf.api.SmurfInfo;
 import cn.paper_card.sponsorship.api.QqGroupMessageSender;
@@ -72,6 +75,8 @@ public final class ThePlugin extends JavaPlugin {
 
     private SmurfApi smurfApi = null;
 
+    private QqGroupMemberInfoApi qqGroupMemberInfoApi = null;
+
     private final @NotNull Object lock = new Object();
 
     private final @NotNull TaskScheduler taskScheduler;
@@ -108,7 +113,6 @@ public final class ThePlugin extends JavaPlugin {
             if (plugin instanceof final PlayerQqGroupRemarkApi api) {
                 this.playerQqGroupRemarkApi = api;
             }
-
         }
     }
 
@@ -423,6 +427,24 @@ public final class ThePlugin extends JavaPlugin {
 
         if (this.playerQqGroupRemarkApi != null) {
             this.playerQqGroupRemarkApi.updateRemarkByGroupMessage(sender.getId(), sender.getNameCard());
+        }
+
+        if (this.qqGroupMemberInfoApi != null) {
+            try {
+                final String reply = this.qqGroupMemberInfoApi.onMainGroupMessage(sender.getId(), sender.getNameCard(), messageStr);
+                if (reply != null) {
+                    final Runnable run = () -> group.sendMessage(new MessageChainBuilder()
+                            .append(new QuoteReply(event.getMessage()))
+                            .append(new At(sender.getId()))
+                            .append(" ")
+                            .append(new PlainText(reply))
+                            .build());
+
+                    if (!messageSends.offer(run)) run.run();
+                }
+            } catch (Exception e) {
+                getSLF4JLogger().error("", e);
+            }
         }
 
         final String senderName = event.getSenderName();
@@ -795,6 +817,31 @@ public final class ThePlugin extends JavaPlugin {
         };
     }
 
+    private void recordQqInfoWhenJoin(@NotNull NormalMember member, boolean inGroup, @Nullable UserProfile userProfile) {
+        final QqGroupMemberInfoApi api = this.qqGroupMemberInfoApi;
+        if (api == null) return;
+
+        this.taskScheduler.runTaskAsynchronously(() -> {
+            // 记录信息
+            final UserProfile p = userProfile != null ? userProfile : member.queryProfile();
+
+            final QqGroupMemberInfoService s = api.getQqGroupMemberInfoService();
+
+            try {
+                s.addOrUpdateByQq(new QqGroupMemberInfo(
+                        member.getId(),
+                        member.getNick(),
+                        member.getNameCard(),
+                        System.currentTimeMillis(),
+                        inGroup,
+                        p.getQLevel()
+                ));
+            } catch (Exception e) {
+                handleException(e);
+            }
+        });
+    }
+
     private void onMemberJoin() {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
             if (event.getBot().getId() != this.getBotId()) return;
@@ -804,8 +851,7 @@ public final class ThePlugin extends JavaPlugin {
                 final Runnable runnable = () -> {
                     final String msg = """
                             \n欢迎来到PaperCard服务器审核群，
-                            主群进入方式在置顶群公告了噢~
-                            """;
+                            主群进入方式在置顶群公告噢~""";
 
                     final Group group = event.getGroup();
                     group.sendMessage(new MessageChainBuilder()
@@ -817,6 +863,8 @@ public final class ThePlugin extends JavaPlugin {
                 boolean offer = messageSends.offer(runnable);
 
                 if (!offer) runnable.run();
+
+                this.recordQqInfoWhenJoin(event.getMember(), false, null);
 
                 return;
             }
@@ -840,6 +888,8 @@ public final class ThePlugin extends JavaPlugin {
                 final int level;
                 final UserProfile userProfile = event.getMember().queryProfile();
                 level = userProfile.getQLevel();
+
+                this.recordQqInfoWhenJoin(event.getMember(), true, userProfile);
 
                 // 检查是否老玩家入群
                 if (this.checkPlayerJoinGroup(joinQq, event, level)) return;
@@ -923,7 +973,7 @@ public final class ThePlugin extends JavaPlugin {
 
         // 获取玩家的QQ号
         for (QuitInfo quitInfo : list) {
-            
+
             // 已经在线了
             final Player player = getServer().getPlayer(quitInfo.uuid());
             if (player != null && player.isOnline()) continue;
@@ -1182,6 +1232,7 @@ public final class ThePlugin extends JavaPlugin {
         this.paperCardAuthApi = this.getServer().getServicesManager().load(PaperCardAuthApi.class);
         this.playerLastQuitApi = this.getServer().getServicesManager().load(PlayerLastQuitApi2.class);
         this.smurfApi = this.getServer().getServicesManager().load(SmurfApi.class);
+        this.qqGroupMemberInfoApi = this.getServer().getServicesManager().load(QqGroupMemberInfoApi.class);
 
         this.bilibiliBindApi = this.getServer().getServicesManager().load(BilibiliBindApi.class);
         if (this.bilibiliBindApi != null) getSLF4JLogger().info("已连接到" + BilibiliBindApi.class.getSimpleName());
