@@ -5,6 +5,7 @@ import cn.paper_card.chat_gpt.api.ChatGptApi;
 import cn.paper_card.group_root_command.GroupRootCommandApi;
 import cn.paper_card.little_skin_login.api.LittleSkinLoginApi;
 import cn.paper_card.paper_card_auth.api.PaperCardAuthApi;
+import cn.paper_card.player_coins.api.PlayerCoinsApi;
 import cn.paper_card.player_last_quit.api.PlayerLastQuitApi2;
 import cn.paper_card.player_last_quit.api.QuitInfo;
 import cn.paper_card.qq_bind.api.BindInfo;
@@ -29,6 +30,7 @@ import net.mamoe.mirai.Bot;
 import net.mamoe.mirai.contact.Group;
 import net.mamoe.mirai.contact.Member;
 import net.mamoe.mirai.contact.NormalMember;
+import net.mamoe.mirai.contact.UserOrBot;
 import net.mamoe.mirai.data.UserProfile;
 import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
@@ -71,6 +73,8 @@ public final class ThePlugin extends JavaPlugin {
     private SmurfApi smurfApi = null;
 
     private QqGroupMemberInfoApi qqGroupMemberInfoApi = null;
+
+    private PlayerCoinsApi playerCoinsApi = null;
 
     private final @NotNull Object lock = new Object();
 
@@ -1037,6 +1041,39 @@ public final class ThePlugin extends JavaPlugin {
         });
     }
 
+    private void onSignIn() {
+        GlobalEventChannel.INSTANCE.subscribeAlways(SignEvent.class, event -> {
+            getSLF4JLogger().info("DEBUG: " + event.toString());
+
+            final UserOrBot user = event.getUser();
+
+            getSLF4JLogger().info("DEBUG: " + user.getClass().getName());
+
+            final Bot bot = event.getBot();
+
+            // Event: SignEvent(bot=2797664401, group=860768366, member=1658813364, sign=今日已打卡 )
+
+            if (bot.getId() != this.configManager.getBotId()) return;
+
+            if (!(user instanceof final NormalMember member)) return;
+
+            final Group group = member.getGroup();
+            if (group.getId() != this.configManager.getMainGroupId()) return;
+
+            final String reply = new MemberSignService(this).onSign(member.getId());
+
+            if (reply == null) return;
+
+            final Runnable r = () -> group.sendMessage(new MessageChainBuilder()
+                    .append(new At(member.getId()))
+                    .append(" ")
+                    .append(reply)
+                    .build());
+
+            if (!messageSends.offer(r)) r.run();
+        });
+    }
+
     @Override
     public void onLoad() {
         QqGroupAccessImpl qqGroupAccess = new QqGroupAccessImpl(this);
@@ -1088,6 +1125,7 @@ public final class ThePlugin extends JavaPlugin {
         this.playerLastQuitApi = this.getServer().getServicesManager().load(PlayerLastQuitApi2.class);
         this.smurfApi = this.getServer().getServicesManager().load(SmurfApi.class);
         this.qqGroupMemberInfoApi = this.getServer().getServicesManager().load(QqGroupMemberInfoApi.class);
+        this.playerCoinsApi = this.getServer().getServicesManager().load(PlayerCoinsApi.class);
 
         this.bilibiliBindApi = this.getServer().getServicesManager().load(BilibiliBindApi.class);
         if (this.bilibiliBindApi != null) getSLF4JLogger().info("已连接到" + BilibiliBindApi.class.getSimpleName());
@@ -1182,6 +1220,8 @@ public final class ThePlugin extends JavaPlugin {
         }
 
         this.getGroupRootCommandApi();
+
+        this.onSignIn();
 
         // 好友消息的处理
         this.onFriendMessage();
@@ -1363,5 +1403,13 @@ public final class ThePlugin extends JavaPlugin {
         text.append(Component.text("[").color(NamedTextColor.GRAY));
         text.append(Component.text(this.getName()).color(NamedTextColor.DARK_AQUA));
         text.append(Component.text("]").color(NamedTextColor.GRAY));
+    }
+
+    @Nullable QqBindApi getQqBindApi() {
+        return this.qqBindApi;
+    }
+
+    @Nullable PlayerCoinsApi getPlayerCoinsApi() {
+        return this.playerCoinsApi;
     }
 }
