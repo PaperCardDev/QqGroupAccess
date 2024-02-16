@@ -41,7 +41,7 @@ class MemberSignService {
         if (coinsApi == null) return "PlayerCoinsApi不可用！";
 
         try {
-            coinsApi.addCoins(info.uuid(), coins);
+            coinsApi.addCoins(info.uuid(), coins, "群打卡，QQ: %d".formatted(qq));
         } catch (Exception e) {
             plugin.handleException(e);
             return e.toString();
