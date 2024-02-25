@@ -94,12 +94,15 @@ public final class ThePlugin extends JavaPlugin {
 
     private MyScheduledTask myScheduledTask = null;
 
+    private boolean chatImageMod = true;
+
     public ThePlugin() {
         this.taskScheduler = UniversalScheduler.getScheduler(this);
         this.messageSends = new LinkedBlockingQueue<>();
         this.leaveTimes = new HashMap<>();
         this.groupSyncMessages = new ConcurrentHashMap<>();
         this.configManager = new ConfigManager(this);
+        this.chatImageMod = true;
     }
 
     private void getGroupRootCommandApi() {
@@ -201,15 +204,32 @@ public final class ThePlugin extends JavaPlugin {
             } else if (singleMessage instanceof final PlainText plainText) { // 纯文本
                 builder.append(plainText.getContent());
             } else if (singleMessage instanceof final Image image) { // 图片
-                builder.append(image.contentToString());
+
+                final String str = image.contentToString();
+
+                if (this.chatImageMod) {
+                    final String imageUrl = Image.queryUrl(image);
+                    String name = str;
+                    name = name.replaceAll("[\\[\\]]", "");
+                    builder.append("[[CICode,url=%s, name=%s, alt=请安装ChatImage模组来预览图片]]".formatted(
+                            imageUrl, name
+                    ));
+                } else {
+                    builder.append(str);
+                }
+
             } else if (singleMessage instanceof final Face face) { // 表情
                 builder.append(face.contentToString());
             } else if (singleMessage instanceof final VipFace vipFace) { // VIP表情
                 builder.append(vipFace.contentToString());
             } else if (singleMessage instanceof QuoteReply quoteReply) {
                 quoteReplies.add(quoteReply);
+            } else {
+                if (!(singleMessage instanceof MessageSource)) {
+                    final String name = singleMessage.getClass().getSimpleName();
+                    builder.append("[不支持的消息类型：%s]".formatted(name));
+                }
             }
-
         }
 
         final String content = builder.toString();
@@ -828,7 +848,7 @@ public final class ThePlugin extends JavaPlugin {
         });
     }
 
-    private void notifyLastQuitByQqGroup(@NotNull GroupAccess mainGroup, long cur) {
+    private void notifyLastQuitByQqGroup(@NotNull GroupAccess mainGroup) {
         final PlayerLastQuitApi2 playerLastQuitApi1 = this.playerLastQuitApi;
         final QqBindApi qqBindApi1 = this.qqBindApi;
         final SmurfApi smurfApi1 = this.smurfApi;
@@ -844,7 +864,7 @@ public final class ThePlugin extends JavaPlugin {
 
         final List<QuitInfo> list;
         try {
-            list = playerLastQuitApi1.queryTimeAfter(cur - 5 * 60 * 1000L);
+            list = playerLastQuitApi1.queryLatest(10 * 60 * 1000L);
         } catch (Exception e) {
             getSLF4JLogger().error("", e);
             return;
@@ -906,7 +926,7 @@ public final class ThePlugin extends JavaPlugin {
                 }
 
                 // 通知玩家上线
-                this.notifyLastQuitByQqGroup(mainGroupAccess, System.currentTimeMillis());
+                this.notifyLastQuitByQqGroup(mainGroupAccess);
             }
         });
     }
