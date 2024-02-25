@@ -14,17 +14,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
 
 class GroupAccessImpl implements GroupAccess {
 
     private final @NotNull Group group;
 
-    private final @NotNull BlockingQueue<Runnable> messageSends;
+    private final @NotNull MessageSender messageSender;
 
-    GroupAccessImpl(@NotNull Group group, @NotNull BlockingQueue<Runnable> messageSends) {
+    GroupAccessImpl(@NotNull Group group, @NotNull MessageSender sender) {
         this.group = group;
-        this.messageSends = messageSends;
+        this.messageSender = sender;
     }
 
     @Override
@@ -52,42 +51,41 @@ class GroupAccessImpl implements GroupAccess {
 
     @Override
     public void sendNormalMessage(@NotNull String message) {
-        final boolean offer = messageSends.offer(() -> group.sendMessage(message));
-        if (!offer) group.sendMessage(message);
+        final Runnable runnable = () -> group.sendMessage(message);
+        if (this.messageSender.offerFail(runnable)) runnable.run();
     }
 
     @Override
     public void sendAtMessage(long qq, @NotNull String message) {
-        final MessageChain chain = new MessageChainBuilder()
-                .append(new At(qq))
-                .append(new PlainText(" "))
-                .append(new PlainText(message))
-                .build();
-
-
-        final boolean offer = messageSends.offer(() -> group.sendMessage(chain));
-
-        if (!offer) group.sendMessage(chain);
-
+        final Runnable runnable = () -> {
+            final MessageChain chain = new MessageChainBuilder()
+                    .append(new At(qq))
+                    .append(new PlainText(" "))
+                    .append(new PlainText(message))
+                    .build();
+            group.sendMessage(chain);
+        };
+        if (this.messageSender.offerFail(runnable)) runnable.run();
     }
 
     @Override
     public void sendAtMessage(@NotNull List<Long> qqs, @NotNull String message) {
+        final Runnable runnable = () -> {
+            final MessageChainBuilder builder = new MessageChainBuilder();
 
-        final MessageChainBuilder builder = new MessageChainBuilder();
+            for (Long qq : qqs) {
+                builder.append(new At(qq));
+                builder.append(" ");
+            }
 
-        for (Long qq : qqs) {
-            builder.append(new At(qq));
-            builder.append(" ");
-        }
+            builder.append(new PlainText(message));
 
-        builder.append(new PlainText(message));
+            final MessageChain build = builder.build();
 
-        final MessageChain build = builder.build();
+            group.sendMessage(build);
+        };
 
-        final boolean offer = messageSends.offer(() -> group.sendMessage(build));
-
-        if (!offer) group.sendMessage(build);
+        if (this.messageSender.offerFail(runnable)) runnable.run();
     }
 
     @Override

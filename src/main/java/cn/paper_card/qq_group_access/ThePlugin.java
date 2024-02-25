@@ -22,7 +22,6 @@ import cn.paper_card.sponsorship.api.QqGroupMessageSender;
 import cn.paper_card.sponsorship.api.SponsorshipApi2;
 import com.github.Anon8281.universalScheduler.UniversalScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.schedulers.TaskScheduler;
-import com.github.Anon8281.universalScheduler.scheduling.tasks.MyScheduledTask;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -36,7 +35,6 @@ import net.mamoe.mirai.event.GlobalEventChannel;
 import net.mamoe.mirai.event.events.*;
 import net.mamoe.mirai.message.MessageReceipt;
 import net.mamoe.mirai.message.data.*;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
@@ -48,9 +46,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
 
 public final class ThePlugin extends JavaPlugin {
 
@@ -82,27 +78,24 @@ public final class ThePlugin extends JavaPlugin {
 
     private final @NotNull ConfigManager configManager;
 
-
-    private final @NotNull HashSet<Long> auditSendImageQq = new HashSet<>();
-    private final @NotNull HashSet<Long> passAuditQq = new HashSet<>();
-
-    private final @NotNull BlockingQueue<Runnable> messageSends;
+    private final @NotNull MessageSender messageSender;
 
     private final @NotNull ConcurrentHashMap<Integer, UUID> groupSyncMessages;
 
-    private final @NotNull HashMap<Long, Long> leaveTimes;
+    private final @NotNull AuditGroupHandler auditGroupHandler;
 
-    private MyScheduledTask myScheduledTask = null;
+    private final @NotNull MainGroupHandler mainGroupHandler;
 
     private boolean chatImageMod = true;
 
     public ThePlugin() {
         this.taskScheduler = UniversalScheduler.getScheduler(this);
-        this.messageSends = new LinkedBlockingQueue<>();
-        this.leaveTimes = new HashMap<>();
         this.groupSyncMessages = new ConcurrentHashMap<>();
         this.configManager = new ConfigManager(this);
         this.chatImageMod = true;
+        this.messageSender = new MessageSender(this);
+        this.auditGroupHandler = new AuditGroupHandler(this);
+        this.mainGroupHandler = new MainGroupHandler(this);
     }
 
     private void getGroupRootCommandApi() {
@@ -114,8 +107,20 @@ public final class ThePlugin extends JavaPlugin {
         }
     }
 
+    @NotNull MessageSender getMessageSender() {
+        return this.messageSender;
+    }
+
+    @NotNull AuditGroupHandler getAuditGroupHandler() {
+        return this.auditGroupHandler;
+    }
+
     @NotNull TaskScheduler getTaskScheduler() {
         return this.taskScheduler;
+    }
+
+    private boolean offerFail(@NotNull Runnable runnable) {
+        return this.messageSender.offerFail(runnable);
     }
 
 
@@ -176,7 +181,7 @@ public final class ThePlugin extends JavaPlugin {
                     botAsMember.setNameCard("喵喵~");
                 };
 
-                if (!messageSends.offer(run)) run.run();
+                if (offerFail(run)) run.run();
             }
         });
     }
@@ -239,7 +244,7 @@ public final class ThePlugin extends JavaPlugin {
             final String reply = api.onGroupMessage(senderQq, senderName, builder.toString());
             if (reply != null) {
                 final Runnable run = () -> group.sendMessage(reply);
-                if (!messageSends.offer(run)) run.run();
+                if (offerFail(run)) run.run();
             }
         }
 
@@ -248,7 +253,7 @@ public final class ThePlugin extends JavaPlugin {
             final String reply = api.onAtMessage(senderQq, senderName, at.getTarget(), content);
             if (reply != null) {
                 final Runnable run = () -> group.sendMessage(reply);
-                if (!messageSends.offer(run)) run.run();
+                if (offerFail(run)) run.run();
             }
         }
 
@@ -257,7 +262,7 @@ public final class ThePlugin extends JavaPlugin {
             final String reply = api.onAtAllMessage(senderQq, senderName, content);
             if (reply != null) {
                 final Runnable run = () -> group.sendMessage(reply);
-                if (!messageSends.offer(run)) run.run();
+                if (offerFail(run)) run.run();
             }
         }
 
@@ -281,7 +286,7 @@ public final class ThePlugin extends JavaPlugin {
                         final String reply = api.onReplySyncMessage(senderQq, senderName, uuid, content);
                         if (reply != null) {
                             final Runnable run = () -> group.sendMessage(reply);
-                            if (!messageSends.offer(run)) run.run();
+                            if (offerFail(run)) run.run();
                         }
                     } else {
                         getSLF4JLogger().info("DEBUG: 回复的是机器人的非同步消息");
@@ -329,7 +334,7 @@ public final class ThePlugin extends JavaPlugin {
                     .append(reply)
                     .build());
 
-            if (!messageSends.offer(runnable)) runnable.run();
+            if (offerFail(runnable)) runnable.run();
 
         }
     }
@@ -355,7 +360,7 @@ public final class ThePlugin extends JavaPlugin {
                                 .append(new PlainText(reply))
                                 .build());
 
-                        if (!messageSends.offer(run)) run.run();
+                        if (offerFail(run)) run.run();
                     }
                 } catch (Exception e) {
                     getSLF4JLogger().error("", e);
@@ -380,7 +385,7 @@ public final class ThePlugin extends JavaPlugin {
                             .append(new PlainText(" "))
                             .append(new PlainText(s))
                             .build());
-                    if (!messageSends.offer(runnable)) runnable.run();
+                    if (offerFail(runnable)) runnable.run();
                 }
             }
         }
@@ -396,7 +401,7 @@ public final class ThePlugin extends JavaPlugin {
                         .append(new PlainText(reply))
                         .build());
 
-                if (!messageSends.offer(runnable)) runnable.run();
+                if (offerFail(runnable)) runnable.run();
             }
         }
 
@@ -411,7 +416,7 @@ public final class ThePlugin extends JavaPlugin {
                         .append(new PlainText(reply))
                         .build());
 
-                if (!messageSends.offer(runnable)) runnable.run();
+                if (offerFail(runnable)) runnable.run();
             }
         }
 
@@ -425,7 +430,7 @@ public final class ThePlugin extends JavaPlugin {
                         .append(new PlainText(" "))
                         .append(new PlainText(reply))
                         .build());
-                if (!messageSends.offer(runnable)) runnable.run();
+                if (offerFail(runnable)) runnable.run();
             }
         }
 
@@ -438,67 +443,6 @@ public final class ThePlugin extends JavaPlugin {
 
         // 普通成员命令
         executeMainGroupCommand(false, commandLine, message, group, sender);
-
-    }
-
-    private void onAuditGroupMessage(@NotNull GroupMessageEvent event) {
-        final Group group = event.getGroup();
-        final MessageChain message = event.getMessage();
-
-
-        // 包含关键字
-        final String key = "已三连";
-        final String contentToString = message.contentToString();
-
-        if (contentToString.startsWith(key)) {
-            final boolean removed;
-            synchronized (this.auditSendImageQq) {
-                removed = this.auditSendImageQq.remove(event.getSender().getId());
-            }
-
-            if (removed) {
-
-                synchronized (this.passAuditQq) {
-                    this.passAuditQq.add(event.getSender().getId());
-                }
-
-                final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
-                        .append(new QuoteReply(message))
-                        .append(new At(event.getSender().getId()))
-                        .append(" ")
-                        .append("""
-                                已颁发入群令牌，QQ主群为：%d
-                                请在两分钟内申请加入~
-                                您的QQ: %s(%d)""".formatted(this.configManager.getMainGroupId(), event.getSenderName(), event.getSender().getId()))
-                        .build());
-
-                if (!messageSends.offer(runnable)) runnable.run();
-
-            } else {
-                final Runnable runnable = () ->
-                        group.sendMessage(new MessageChainBuilder()
-                                .append(new QuoteReply(message))
-                                .append(new At(event.getSender().getId()))
-                                .append(" 先发送三连截图到群里，再发消息“%s”，注意一下【先后顺序】噢".formatted(key))
-                                .build());
-
-                if (!messageSends.offer(runnable)) runnable.run();
-            }
-        }
-
-        if (message.size() < 2) return;
-        final SingleMessage singleMessage = message.get(1);
-
-        if (singleMessage instanceof final Image image) {
-            // 发送一张图片
-            final ImageType imageType = image.getImageType();
-
-            getSLF4JLogger().info("ImageType: " + imageType.name());
-
-            synchronized (this.auditSendImageQq) {
-                this.auditSendImageQq.add(event.getSender().getId());
-            }
-        }
     }
 
     private void onFriendMessage() {
@@ -559,7 +503,7 @@ public final class ThePlugin extends JavaPlugin {
                             }
                         };
 
-                        if (!messageSends.offer(runnable)) runnable.run();
+                        if (offerFail(runnable)) runnable.run();
 
                     }
                 }
@@ -568,9 +512,13 @@ public final class ThePlugin extends JavaPlugin {
             final long botId = this.configManager.getBotId();
             if (event.getBot().getId() != botId) return;
 
-            if (event.getGroup().getId() == this.configManager.getMainGroupId()) this.onMainGroupMessage(event);
-            if (event.getGroup().getId() == this.configManager.getAuditGroupId()) this.onAuditGroupMessage(event);
+            final Group group = event.getGroup();
+            final long groupId = group.getId();
 
+            if (groupId == this.configManager.getMainGroupId()) this.onMainGroupMessage(event);
+
+            if (groupId == this.configManager.getAuditGroupId())
+                this.auditGroupHandler.onMessage(event);
         });
     }
 
@@ -578,59 +526,8 @@ public final class ThePlugin extends JavaPlugin {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.class, event -> {
             if (event.getBot().getId() != this.configManager.getBotId()) return;
 
-            if (event.getGroupId() != this.configManager.getMainGroupId()) return;
-
-            // 退出主群
-            final Group group = event.getGroup();
-            final Member member = event.getMember();
-
-            final long qq = member.getId();
-
-            if (this.qqGroupMemberInfoApi != null) {
-                final QqGroupMemberInfoService service = this.qqGroupMemberInfoApi.getQqGroupMemberInfoService();
-                try {
-                    final boolean updated = service.updateInGroup(qq, false);
-                    getSLF4JLogger().info("%s (%d) 退出主群，信息更新：%s".formatted(member.getNameCard(), member.getId(), updated));
-                } catch (Exception e) {
-                    handleException(e);
-                }
-            }
-
-            String name; // 游戏名
-
-            if (this.qqBindApi == null) {
-                name = "无法访问QQ绑定API！";
-            } else {
-                final BindInfo bindInfo;
-                try {
-                    bindInfo = this.qqBindApi.getBindService().queryByQq(qq);
-
-                    if (bindInfo != null && bindInfo.uuid() != null) {
-                        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
-
-                        name = offlinePlayer.getName();
-                        if (name == null) name = offlinePlayer.getUniqueId().toString();
-
-                    } else {
-                        name = "未绑定正版";
-                    }
-                } catch (Exception e) {
-                    this.getSLF4JLogger().error("qq bind service -> query by qq", e);
-                    name = e.toString();
-                }
-            }
-
-            final String name1 = name;
-
-            final Runnable runnable = () -> group.sendMessage("%s (%d) 离开了群聊\n游戏名：%s".formatted(member.getNick(), member.getId(),
-                    name1));
-
-            if (!messageSends.offer(runnable)) runnable.run();
-
-            // 保存退出时间
-            synchronized (this.leaveTimes) {
-                this.leaveTimes.put(qq, System.currentTimeMillis());
-            }
+            if (event.getGroupId() == this.configManager.getMainGroupId())
+                this.mainGroupHandler.onLeave(event);
         });
 
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberLeaveEvent.Kick.class, event -> {
@@ -666,62 +563,12 @@ public final class ThePlugin extends JavaPlugin {
                 ));
             };
 
-            if (!messageSends.offer(runnable1)) runnable1.run();
+            if (offerFail(runnable1)) runnable1.run();
         });
     }
 
-    private boolean checkPlayerJoinGroup(long qq, MemberJoinEvent event, int qLevel) {
-        if (this.qqBindApi == null) return false;
 
-        // 看看是否老玩家入群
-        final BindInfo bindInfo;
-
-        try {
-            bindInfo = this.qqBindApi.getBindService().queryByQq(qq);
-        } catch (Exception e) {
-            this.getSLF4JLogger().error("qq bind service -> query by qq", e);
-            final Runnable runnable = () -> event.getGroup().sendMessage(e.toString());
-            if (!messageSends.offer(runnable)) runnable.run();
-            return false;
-        }
-
-        if (bindInfo == null) return false;
-
-        final UUID uuid = bindInfo.uuid();
-
-        if (uuid == null) return false;
-
-        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(uuid);
-        String name = offlinePlayer.getName();
-        if (name == null) name = uuid.toString();
-
-        final Runnable runnable = sendMessageOldPlayerJoin(event, qLevel, name);
-
-        if (!messageSends.offer(runnable)) runnable.run();
-
-        return true;
-    }
-
-    @NotNull
-    private static Runnable sendMessageOldPlayerJoin(MemberJoinEvent event, int qLevel, String name) {
-        return () -> {
-            final String msg = """
-                    \n欢迎回到PaperCard~
-                    您的游戏名: %s
-                    您的QQ等级: %d
-                    请查看群公告【新人必看】（服务器地址在这里噢）
-                    祝您游戏愉快~""".formatted(name, qLevel);
-
-            final Group group = event.getGroup();
-
-            group.sendMessage(new MessageChainBuilder()
-                    .append(new At(event.getMember().getId()))
-                    .append(msg)
-                    .build());
-        };
-    }
-
-    private void recordQqInfoWhenJoin(@NotNull NormalMember member, boolean inGroup, @Nullable UserProfile userProfile) {
+    void recordQqInfoWhenJoin(@NotNull NormalMember member, boolean inGroup, @Nullable UserProfile userProfile) {
         final QqGroupMemberInfoApi api = this.qqGroupMemberInfoApi;
         if (api == null) return;
 
@@ -752,98 +599,15 @@ public final class ThePlugin extends JavaPlugin {
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinEvent.class, event -> {
             if (event.getBot().getId() != this.configManager.getBotId()) return;
 
-            if (event.getGroupId() == this.configManager.getAuditGroupId()) { // 进入审核群
+            final long groupId = event.getGroupId();
 
-                final Runnable runnable = () -> {
-                    final String msg = """
-                            \n欢迎来到PaperCard服务器审核群，
-                            主群进入方式在置顶群公告噢~""";
-
-                    final Group group = event.getGroup();
-                    group.sendMessage(new MessageChainBuilder()
-                            .append(new At(event.getMember().getId()))
-                            .append(msg)
-                            .build());
-                };
-
-                boolean offer = messageSends.offer(runnable);
-
-                if (!offer) runnable.run();
-
-                this.recordQqInfoWhenJoin(event.getMember(), false, null);
-
+            if (groupId == this.configManager.getAuditGroupId()) { // 进入审核群
+                this.auditGroupHandler.onJoin(event);
                 return;
             }
 
-            if (event.getGroupId() == this.configManager.getMainGroupId()) { // 进入主群
-
-                final long joinQq = event.getMember().getId();
-
-                // 重过审集合中移出
-                final boolean removed;
-                synchronized (this.passAuditQq) {
-                    removed = this.passAuditQq.remove(joinQq);
-                }
-
-                final int level;
-                final UserProfile userProfile = event.getMember().queryProfile();
-                level = userProfile.getQLevel();
-
-                // 记录群成员信息
-                this.recordQqInfoWhenJoin(event.getMember(), true, userProfile);
-
-                // 检查是否老玩家入群
-                if (this.checkPlayerJoinGroup(joinQq, event, level)) return;
-
-                final Runnable runnable = () -> {
-
-                    final String msg = """
-                            \n欢迎新伙伴入裙~
-                            您的QQ等级为: %d
-                            请查看群公告【新人必看】（服务器地址在这里噢）
-                            祝您游戏愉快~""".formatted(level);
-
-                    final Group group = event.getGroup();
-
-                    group.sendMessage(new MessageChainBuilder()
-                            .append(new At(joinQq))
-                            .append(msg)
-                            .build());
-
-                };
-                if (!messageSends.offer(runnable)) runnable.run();
-
-                // 检查令牌
-                final Runnable runnable1 = () -> {
-                    final String msg;
-                    if (removed) {
-                        msg = "已回收你的入群令牌";
-                    } else {
-                        msg = "未检测到你的入群令牌，请先加入审核群%d获取令牌！".formatted(this.configManager.getAuditGroupId());
-                    }
-
-                    event.getGroup().sendMessage(new MessageChainBuilder()
-                            .append(new At(joinQq))
-                            .append(" ")
-                            .append(msg)
-                            .build());
-                };
-                if (!messageSends.offer(runnable1)) runnable1.run();
-
-                // 如果在审核群里，提示退出审核群
-                final GroupAccess auditGroupAccess;
-                try {
-                    auditGroupAccess = createAuditGroupAccess();
-                } catch (Exception e) {
-                    handleException(e);
-                    return;
-                }
-
-                try {
-                    auditGroupAccess.sendAtMessage(event.getMember().getId(), "恭喜你已经进入主群，现在可以退出审核群啦~");
-                } catch (Exception e) {
-                    handleException(e);
-                }
+            if (groupId == this.configManager.getMainGroupId()) { // 进入主群
+                this.mainGroupHandler.onJoin(event);
             }
         });
     }
@@ -932,132 +696,11 @@ public final class ThePlugin extends JavaPlugin {
     }
 
     private void onJoinRequest() {
-
         GlobalEventChannel.INSTANCE.subscribeAlways(MemberJoinRequestEvent.class, event -> {
-            getLogger().info("DEBUG: 入群申请事件");
-
-            if (event.getBot().getId() != this.configManager.getBotId()) return;
-            if (event.getGroupId() != this.configManager.getMainGroupId()) return;
-
-            final Group group = event.getGroup();
-            if (group == null) return;
-
-            // 进入主群的申请
-
-            final long fromId = event.getFromId();
-            final String fromNick = event.getFromNick();
-            final Long invitorId = event.getInvitorId();
-
-
-            getLogger().info("入群申请 {fromId: %d, fromNick: %s, invitorId: %s}".formatted(
-                    fromId, fromNick, invitorId
-            ));
-
-            final Long leveTime;
-            synchronized (this.leaveTimes) {
-                leveTime = this.leaveTimes.get(fromId);
-            }
-
-            if (leveTime != null && System.currentTimeMillis() < leveTime + 24 * 60 * 60 * 1000L) {
-                final String msg = """
-                        不自动处理的入群申请，因为在短时间内离开了群聊
-                        QQ: %s(%s)""".formatted(fromNick, fromId);
-
-                final Runnable runnable = () -> group.sendMessage(msg);
-
-                if (!messageSends.offer(runnable)) runnable.run();
-                return;
-            }
-
-
-            // 查询QQ绑定
-            if (this.qqBindApi != null) {
-                try {
-                    final BindInfo bindInfo = this.qqBindApi.getBindService().queryByQq(fromId);
-
-                    if (bindInfo != null && bindInfo.uuid() != null) {
-
-                        final OfflinePlayer offlinePlayer = getServer().getOfflinePlayer(bindInfo.uuid());
-                        String name = offlinePlayer.getName();
-                        if (name == null) name = bindInfo.uuid().toString();
-                        final String name1 = name;
-
-                        final Runnable runnable = () -> group.sendMessage("""
-                                自动同意老玩家入群：
-                                游戏名：%s
-                                QQ: %s (%d)""".formatted(
-                                name1, fromNick, fromId
-                        ));
-
-                        final boolean offer = messageSends.offer(runnable);
-
-                        if (!offer) runnable.run();
-
-                        event.accept();
-                        return;
-                    }
-
-                } catch (Exception e) {
-                    handleException(e);
-                    final Runnable run = () -> group.sendMessage(e.toString());
-                    if (!messageSends.offer(run)) run.run();
-                }
-            }
-
-            // 查询过审表
-            final boolean contains;
-            synchronized (this.passAuditQq) {
-                contains = this.passAuditQq.contains(fromId);
-            }
-
-            if (contains) {
-                final Runnable runnable = () -> group.sendMessage("""
-                        自动同意过审玩家入群：
-                        QQ: %s (%d)""".formatted(fromNick, fromId));
-
-                if (!messageSends.offer(runnable)) runnable.run();
-
-                event.accept();
-                return;
-            }
-
-            // 是否在审核群中
-            try {
-                final GroupAccess auditGroupAccess = createAuditGroupAccess();
-                final boolean hasMember = auditGroupAccess.hasMember(fromId);
-                if (hasMember) {
-
-                    event.reject(false, "请先通过审核！");
-                    auditGroupAccess.sendAtMessage(fromId, "请先发送三连截图到群里，再发送消息“已三连”，得到入群令牌后，再申请加入主群！");
-
-                    final Runnable runnable = () -> {
-                        final String msg = """
-                                已自动拒绝无令牌的入群申请：
-                                %s (%d)""".formatted(fromNick, fromId);
-                        group.sendMessage(msg);
-                    };
-
-                    if (!messageSends.offer(runnable)) runnable.run();
-                    return;
-                }
-            } catch (Exception e) {
-                handleException(e);
-                final Runnable run = () -> group.sendMessage(e.toString());
-                if (!messageSends.offer(run)) run.run();
-            }
-
-            final Runnable runnable = () -> group.sendMessage("""
-                    无入群令牌，不会自动处理入群申请：
-                    %s (%d)
-                    InvitorId: %s"""
-                    .formatted(
-                            fromNick,
-                            fromId,
-                            invitorId
-                    )
-            );
-
-            if (!messageSends.offer(runnable)) runnable.run();
+            final long groupId = event.getGroupId();
+            final long mainGroupId = this.configManager.getMainGroupId();
+            if (mainGroupId == groupId)
+                this.mainGroupHandler.onJoinRequest(event);
         });
     }
 
@@ -1090,7 +733,7 @@ public final class ThePlugin extends JavaPlugin {
                     .append(reply)
                     .build());
 
-            if (!messageSends.offer(r)) r.run();
+            if (offerFail(r)) r.run();
         });
     }
 
@@ -1182,7 +825,7 @@ public final class ThePlugin extends JavaPlugin {
                     }
                 };
 
-                if (!messageSends.offer(runnable)) runnable.run();
+                if (offerFail(runnable)) runnable.run();
 
             });
         }
@@ -1199,7 +842,7 @@ public final class ThePlugin extends JavaPlugin {
 
                     final Runnable run = () -> group.sendMessage(s);
 
-                    if (!messageSends.offer(run)) run.run();
+                    if (offerFail(run)) run.run();
                 }
 
                 @Override
@@ -1215,7 +858,7 @@ public final class ThePlugin extends JavaPlugin {
                         group.sendMessage(builder.build());
                     };
 
-                    if (!messageSends.offer(run)) run.run();
+                    if (offerFail(run)) run.run();
                 }
             });
         }
@@ -1265,40 +908,17 @@ public final class ThePlugin extends JavaPlugin {
         this.onBotInvitedJoinGroupRequestEvent();
         this.onBotJoinGroupEvent();
 
-
-        final Random random = new Random();
-
-        if (this.myScheduledTask == null) {
-            this.myScheduledTask = this.taskScheduler.runTaskTimerAsynchronously(() -> {
-                final Runnable runnable = messageSends.poll();
-                if (runnable == null) return;
-
-                final long l = random.nextLong(200);
-
-                try {
-                    Thread.sleep(l);
-                } catch (InterruptedException e) {
-                    getLogger().warning(e.toString());
-                    return;
-                }
-
-                runnable.run();
-            }, 20, 20);
-
-        }
-
         // 事件监听
         new OnQuit(this);
+
+        this.messageSender.init();
     }
 
     @Override
     public void onDisable() {
         this.configManager.save();
 
-        if (this.myScheduledTask != null) {
-            this.myScheduledTask.cancel();
-            this.myScheduledTask = null;
-        }
+        this.messageSender.destroy();
         this.taskScheduler.cancelTasks();
 
         this.getServer().getServicesManager().unregisterAll(this);
@@ -1331,7 +951,7 @@ public final class ThePlugin extends JavaPlugin {
                 throw new Exception("QQ机器人[%d]无法访问QQ主群[%d]，请手动邀请QQ机器人入群！".formatted(botId, mainGroupId));
             }
 
-            return new GroupAccessImpl(group, messageSends);
+            return new GroupAccessImpl(group, this.messageSender);
         }
     }
 
@@ -1362,7 +982,7 @@ public final class ThePlugin extends JavaPlugin {
                 throw new Exception("QQ机器人[%d]无法访问QQ群[%d]，请手动邀请QQ机器人入群！".formatted(botId, auditGroupId));
             }
 
-            return new GroupAccessImpl(group, messageSends);
+            return new GroupAccessImpl(group, this.messageSender);
 
         }
     }

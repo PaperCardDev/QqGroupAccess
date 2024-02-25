@@ -6,7 +6,7 @@
 
     <groupId>cn.paper_card</groupId>
     <artifactId>QqGroupAccess</artifactId>
-    <version>1.5</version>
+    <version>1.6</version>
     <packaging>jar</packaging>
 
     <name>QqGroupAccess</name>
@@ -112,12 +112,11 @@
             <scope>provided</scope>
         </dependency>
 
-
-        <!-- https://mvnrepository.com/artifact/net.mamoe/mirai-core-jvm -->
+        <!-- https://mvnrepository.com/artifact/net.mamoe/mirai-core-api-jvm -->
         <dependency>
             <groupId>net.mamoe</groupId>
-            <artifactId>mirai-core-jvm</artifactId>
-            <version>2.16.0-RC</version>
+            <artifactId>mirai-core-api-jvm</artifactId>
+            <version>2.16.0</version>
             <scope>provided</scope>
         </dependency>
 
