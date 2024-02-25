@@ -72,7 +72,8 @@ class AuditGroupHandler {
 
             group.sendMessage(new MessageChainBuilder()
                     .append(new At(qq))
-                    .append(" 恭喜您已经进入主群，现在可以退出审核群啦~")
+                    .append(" ")
+                    .append("恭喜您已经进入主群，现在可以退出审核群啦~")
                     .build());
         };
 
@@ -118,6 +119,7 @@ class AuditGroupHandler {
 
                 final Runnable runnable = () -> group.sendMessage(new MessageChainBuilder()
                         .append(new At(qq))
+                        .append(" ")
                         .append(msg)
                         .build());
 
@@ -131,6 +133,7 @@ class AuditGroupHandler {
 
                     group.sendMessage(new MessageChainBuilder()
                             .append(new At(qq))
+                            .append(" ")
                             .append(msg)
                             .build());
                 };
@@ -169,7 +172,7 @@ class AuditGroupHandler {
                         .append(new At(event.getSender().getId()))
                         .append(" ")
                         .append("""
-                                已颁发入群令牌，QQ主群为：%d
+                                \n已颁发入群令牌，QQ主群为：%d
                                 请尽快申请加入~
                                 您的QQ: %s (%d)""".formatted(
                                 this.plugin.getConfigManager().getMainGroupId(),
@@ -185,7 +188,8 @@ class AuditGroupHandler {
                         group.sendMessage(new MessageChainBuilder()
                                 .append(new QuoteReply(message))
                                 .append(new At(event.getSender().getId()))
-                                .append(" 先发送三连截图到群里，再发消息“%s”，注意一下【先后顺序】噢".formatted(KEY))
+                                .append(" ")
+                                .append("先发送三连截图到群里，再发消息“%s”，注意一下【先后顺序】噢".formatted(KEY))
                                 .build());
 
                 if (offerFail(runnable)) runnable.run();
@@ -211,6 +215,7 @@ class AuditGroupHandler {
                 group.sendMessage(new MessageChainBuilder()
                         .append(new QuoteReply(message))
                         .append(new At(senderQq))
+                        .append(" ")
                         .append("""
                                 \n如要确认提交三连截图，请发送消息“%s”；
                                 如果截图错误，请发送新的截图；
@@ -223,6 +228,7 @@ class AuditGroupHandler {
     void onJoinReqMainFail(@NotNull Group auditGroup, long fromId) {
         final Runnable runnable = () -> auditGroup.sendMessage(new MessageChainBuilder()
                 .append(new At(fromId))
+                .append(" ")
                 .append("\n请先发送三连截图到群里，再发送消息“%s”\n得到入群令牌后，再申请加入主群！".formatted(KEY))
                 .build());
         if (offerFail(runnable)) runnable.run();
