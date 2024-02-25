@@ -162,7 +162,6 @@ class MainGroupHandler {
             sb.append("\n欢迎回到PaperCard~");
             sb.append("\n您的游戏名：");
             sb.append(name);
-            sb.append(name);
             sb.append("\n您的QQ等级：");
             sb.append(qLevel);
             sb.append("\n请查看群公告【新人必看】（服务器地址在这里噢）");
